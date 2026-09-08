@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "swot-pixc-lab"
-version = "0.1.0"
-description = "Reproducible discovery and ingestion tools for SWOT L2 HR PIXC data"
+version = "0.2.0"
+description = "Reproducible discovery and raw pixel workflows for SWOT L2 HR PIXC"
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
@@ -22,8 +22,11 @@ classifiers = [
 ]
 dependencies = [
   "earthaccess>=0.18,<1",
+  "netCDF4>=1.7,<2",
+  "numpy>=1.26,<3",
   "pandas>=2.2,<4",
   "shapely>=2.0,<3",
+  "xarray>=2024.10,<2027",
 ]
 
 [project.optional-dependencies]

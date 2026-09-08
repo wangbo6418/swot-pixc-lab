@@ -29,3 +29,15 @@ class CacheIntegrityError(DownloadError):
 
 class LocalFilesUnavailableError(PixcLabError):
     """Raised when ``resolve_local`` cannot find all local granules."""
+
+
+class PixcOpenError(PixcLabError):
+    """Raised when a local PIXC NetCDF file cannot be opened safely."""
+
+
+class PixcSchemaError(PixcOpenError):
+    """Raised when a PIXC NetCDF file has an incompatible or invalid schema."""
+
+
+class ObservationMismatchError(PixcOpenError):
+    """Raised when files from different SWOT observations are combined."""

@@ -17,9 +17,14 @@ from .exceptions import (
     DiscoveryError,
     DownloadError,
     LocalFilesUnavailableError,
+    ObservationMismatchError,
     PixcLabError,
+    PixcOpenError,
+    PixcSchemaError,
 )
+from .mosaic import PixcObservation, open_pixc
 from .pixc import LocalPixcCollection, PixcCollection, SearchProvenance
+from .reader import PixcSourceMetadata, PixcVariableMetadata
 
 try:
     __version__ = version("swot-pixc-lab")
@@ -38,8 +43,15 @@ __all__ = [
     "GranuleRecord",
     "LocalFilesUnavailableError",
     "LocalPixcCollection",
+    "ObservationMismatchError",
     "PixcCollection",
     "PixcLabError",
+    "PixcObservation",
+    "PixcOpenError",
+    "PixcSchemaError",
+    "PixcSourceMetadata",
+    "PixcVariableMetadata",
     "SearchProvenance",
     "__version__",
+    "open_pixc",
 ]
