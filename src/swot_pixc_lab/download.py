@@ -393,13 +393,18 @@ def _target_appeared_error(target: Path) -> DownloadError:
 
 
 def _file_identity(file_stat: os.stat_result) -> _FileIdentity:
+    birth_or_change_time = getattr(
+        file_stat,
+        "st_birthtime_ns",
+        file_stat.st_ctime_ns,
+    )
     return (
         file_stat.st_dev,
         file_stat.st_ino,
         file_stat.st_mode,
         file_stat.st_size,
         file_stat.st_mtime_ns,
-        file_stat.st_ctime_ns,
+        birth_or_change_time,
     )
 
 
@@ -439,8 +444,10 @@ def _same_file_identity(
     current: _FileIdentity,
     expected: _FileIdentity,
 ) -> bool:
-    current_device, current_inode = current[:2]
-    expected_device, expected_inode = expected[:2]
-    if current_inode != 0 and expected_inode != 0:
-        return (current_device, current_inode) == (expected_device, expected_inode)
+    """Return whether every recorded identity field still matches.
+
+    Device and inode alone are insufficient because a filesystem may quickly
+    reuse an inode after the original cache target is unlinked.
+    """
+
     return current == expected

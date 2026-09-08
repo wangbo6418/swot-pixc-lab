@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from swot_pixc_lab import PixcCollection
+from swot_pixc_lab.download import _same_file_identity
 from swot_pixc_lab.exceptions import (
     CacheIntegrityError,
     DownloadError,
@@ -340,6 +341,14 @@ def test_fallback_rollback_preserves_a_concurrently_replaced_target(
         collection.download(tmp_path)
 
     assert first_target.read_bytes() == b"external"
+
+
+def test_file_identity_rejects_a_reused_inode() -> None:
+    committed = (42, 101, 0o100644, 4, 1_000, 2_000)
+    replacement = (42, 101, 0o100644, 8, 1_001, 2_001)
+
+    assert _same_file_identity(committed, committed)
+    assert not _same_file_identity(replacement, committed)
 
 
 def test_cache_commit_never_clobbers_a_concurrent_target(
