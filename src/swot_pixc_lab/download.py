@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import logging
 import os
+import shutil
 from collections import Counter
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Any, Literal
@@ -15,8 +18,32 @@ from .discovery import EarthdataBackend, GranuleRecord, safe_filename
 from .exceptions import CacheIntegrityError, DiscoveryError, DownloadError
 
 type VerificationMode = Literal["auto", "none", "size", "checksum"]
+type _FileIdentity = tuple[int, int, int, int, int, int]
 
 LOGGER = logging.getLogger(__name__)
+
+_HARD_LINK_FALLBACK_ERRNOS = frozenset(
+    value
+    for name in (
+        "EACCES",
+        "EMLINK",
+        "ENOSYS",
+        "ENOTSUP",
+        "EOPNOTSUPP",
+        "EPERM",
+        "EXDEV",
+    )
+    if (value := getattr(errno, name, None)) is not None
+)
+_HARD_LINK_FALLBACK_WINERRORS = frozenset({1, 17, 50})
+
+
+@dataclass(frozen=True, slots=True)
+class _CacheCommit:
+    source: Path
+    target: Path
+    method: Literal["link", "copy"]
+    copied_identity: _FileIdentity | None = None
 
 
 def download_records(
@@ -103,22 +130,18 @@ def download_records(
                 verify_cached_file(candidate, record, verify=verify)
                 staged[record.identity] = candidate
 
-            committed: list[tuple[Path, Path]] = []
+            committed: list[_CacheCommit] = []
             try:
                 for record in missing:
                     filename = _record_filename(record)
                     source = staged[record.identity]
                     target = target_dir / filename
-                    try:
-                        os.link(source, target)
-                    except FileExistsError as exc:
-                        raise DownloadError(
-                            "Cache target appeared during download and was not "
-                            f"replaced: {target}"
-                        ) from exc
-                    committed.append((source, target))
+                    commit = _commit_staged_file(source, target)
+                    committed.append(commit)
+                    if commit.method == "copy":
+                        verify_cached_file(target, record, verify=verify)
             except Exception as exc:
-                rollback_failures = _rollback_links(committed)
+                rollback_failures = _rollback_commits(committed)
                 if rollback_failures:
                     raise DownloadError(
                         "Cache commit failed and rollback could not remove: "
@@ -127,7 +150,7 @@ def download_records(
                 if isinstance(exc, DownloadError):
                     raise
                 raise DownloadError(
-                    "Cache commit failed; newly linked files were rolled back."
+                    "Cache commit failed; newly committed files were rolled back."
                 ) from exc
 
             for record in missing:
@@ -293,12 +316,131 @@ def _hashlib_name(cmr_name: str) -> str:
     return cmr_name.lower().replace("-", "").replace("_", "")
 
 
-def _rollback_links(committed: Sequence[tuple[Path, Path]]) -> list[Path]:
+def _commit_staged_file(source: Path, target: Path) -> _CacheCommit:
+    try:
+        os.link(source, target)
+    except FileExistsError as exc:
+        raise _target_appeared_error(target) from exc
+    except OSError as exc:
+        if not _hard_link_fallback_allowed(exc):
+            raise
+        LOGGER.debug(
+            "Hard-link cache commit is unavailable for %s; using an exclusive copy.",
+            target.name,
+        )
+        return _copy_staged_file_exclusively(source, target)
+    return _CacheCommit(source=source, target=target, method="link")
+
+
+def _copy_staged_file_exclusively(source: Path, target: Path) -> _CacheCommit:
+    copied_identity: _FileIdentity | None = None
+    try:
+        with source.open("rb") as source_stream:
+            try:
+                target_stream = target.open("xb", buffering=0)
+            except FileExistsError as exc:
+                raise _target_appeared_error(target) from exc
+
+            try:
+                with target_stream:
+                    copied_identity = _file_identity(os.fstat(target_stream.fileno()))
+                    try:
+                        shutil.copyfileobj(
+                            source_stream,
+                            target_stream,
+                            length=1024 * 1024,
+                        )
+                    finally:
+                        copied_identity = _file_identity(
+                            os.fstat(target_stream.fileno())
+                        )
+            except Exception as exc:
+                commit = _CacheCommit(
+                    source=source,
+                    target=target,
+                    method="copy",
+                    copied_identity=copied_identity,
+                )
+                rollback_failures = _rollback_commits((commit,))
+                if rollback_failures:
+                    raise DownloadError(
+                        "Exclusive cache copy failed and rollback could not remove: "
+                        f"{target}"
+                    ) from exc
+                raise
+    except DownloadError:
+        raise
+
+    return _CacheCommit(
+        source=source,
+        target=target,
+        method="copy",
+        copied_identity=copied_identity,
+    )
+
+
+def _hard_link_fallback_allowed(error: OSError) -> bool:
+    return (
+        error.errno in _HARD_LINK_FALLBACK_ERRNOS
+        or getattr(error, "winerror", None) in _HARD_LINK_FALLBACK_WINERRORS
+    )
+
+
+def _target_appeared_error(target: Path) -> DownloadError:
+    return DownloadError(
+        f"Cache target appeared during download and was not replaced: {target}"
+    )
+
+
+def _file_identity(file_stat: os.stat_result) -> _FileIdentity:
+    return (
+        file_stat.st_dev,
+        file_stat.st_ino,
+        file_stat.st_mode,
+        file_stat.st_size,
+        file_stat.st_mtime_ns,
+        file_stat.st_ctime_ns,
+    )
+
+
+def _rollback_commits(committed: Sequence[_CacheCommit]) -> list[Path]:
     failures: list[Path] = []
-    for source, target in reversed(committed):
+    for commit in reversed(committed):
         try:
-            if target.exists() and source.exists() and os.path.samefile(source, target):
-                target.unlink()
+            if commit.method == "link":
+                should_remove = (
+                    commit.target.exists()
+                    and commit.source.exists()
+                    and os.path.samefile(commit.source, commit.target)
+                )
+            elif commit.copied_identity is None:
+                failures.append(commit.target)
+                continue
+            else:
+                try:
+                    current_identity = _file_identity(
+                        commit.target.stat(follow_symlinks=False)
+                    )
+                except FileNotFoundError:
+                    continue
+                should_remove = _same_file_identity(
+                    current_identity,
+                    commit.copied_identity,
+                )
+
+            if should_remove:
+                commit.target.unlink()
         except OSError:
-            failures.append(target)
+            failures.append(commit.target)
     return failures
+
+
+def _same_file_identity(
+    current: _FileIdentity,
+    expected: _FileIdentity,
+) -> bool:
+    current_device, current_inode = current[:2]
+    expected_device, expected_inode = expected[:2]
+    if current_inode != 0 and expected_inode != 0:
+        return (current_device, current_inode) == (expected_device, expected_inode)
+    return current == expected

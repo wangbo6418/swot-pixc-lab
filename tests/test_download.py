@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import errno
 import os
 from pathlib import Path
 
@@ -22,7 +23,7 @@ def _collection(backend):
     )
 
 
-def test_download_open_flow_is_transactional_and_preserves_provenance(
+def test_download_resolve_local_flow_is_transactional_and_preserves_provenance(
     tmp_path, granule_factory, fake_backend_class
 ) -> None:
     raw = granule_factory()
@@ -30,7 +31,7 @@ def test_download_open_flow_is_transactional_and_preserves_provenance(
     collection = _collection(backend)
 
     returned = collection.download(tmp_path, show_progress=False)
-    local = collection.open()
+    local = collection.resolve_local()
 
     assert returned is collection
     assert len(backend.download_calls) == 1
@@ -54,7 +55,7 @@ def test_existing_verified_cache_skips_login_and_download(
     collection.download(tmp_path)
 
     assert backend.download_calls == []
-    assert collection.open().paths == ((tmp_path / filename).resolve(),)
+    assert collection.resolve_local().paths == ((tmp_path / filename).resolve(),)
 
 
 def test_second_download_is_idempotent(
@@ -106,7 +107,7 @@ def test_auto_verification_falls_back_to_size_when_checksum_is_absent(
 
     collection.download(tmp_path)
 
-    assert len(collection.open().paths) == 1
+    assert len(collection.resolve_local().paths) == 1
 
 
 def test_explicit_checksum_verification_requires_cmr_checksum(
@@ -121,10 +122,10 @@ def test_explicit_checksum_verification_requires_cmr_checksum(
     collection = _collection(fake_backend_class([[raw]]))
 
     with pytest.raises(CacheIntegrityError, match="does not provide a checksum"):
-        collection.open(tmp_path, verify="checksum")
+        collection.resolve_local(tmp_path, verify="checksum")
 
 
-def test_open_is_local_only_and_actionable(
+def test_resolve_local_is_local_only_and_actionable(
     tmp_path, granule_factory, fake_backend_class
 ) -> None:
     raw = granule_factory()
@@ -132,11 +133,11 @@ def test_open_is_local_only_and_actionable(
     collection = _collection(backend)
 
     with pytest.raises(LocalFilesUnavailableError, match=r"Call download\(\)"):
-        collection.open(tmp_path)
+        collection.resolve_local(tmp_path)
     assert backend.download_calls == []
 
 
-def test_open_can_resolve_an_existing_cache_without_download(
+def test_resolve_local_can_resolve_an_existing_cache_without_download(
     tmp_path, granule_factory, fake_backend_class
 ) -> None:
     raw = granule_factory()
@@ -145,7 +146,7 @@ def test_open_can_resolve_an_existing_cache_without_download(
     backend = fake_backend_class([[raw]])
     collection = _collection(backend)
 
-    local = collection.open(tmp_path)
+    local = collection.resolve_local(tmp_path)
 
     assert local.paths == ((tmp_path / filename).resolve(),)
     assert backend.download_calls == []
@@ -189,13 +190,13 @@ def test_partial_downloader_result_is_not_committed(
     assert not (tmp_path / filename).exists()
 
 
-def test_empty_collection_download_and_open_are_noops(
+def test_empty_collection_download_and_resolve_local_are_noops(
     tmp_path, fake_backend_class
 ) -> None:
     backend = fake_backend_class([[]])
     collection = _collection(backend)
 
-    local = collection.download(tmp_path).open()
+    local = collection.download(tmp_path).resolve_local()
 
     assert len(local) == 0
     assert local.paths == ()
@@ -232,7 +233,7 @@ def test_cache_commit_rolls_back_if_a_later_link_fails(
         nonlocal calls
         calls += 1
         if calls == 2:
-            raise OSError("synthetic commit failure")
+            raise OSError(errno.EIO, "synthetic commit failure")
         real_link(source, target)
 
     monkeypatch.setattr("swot_pixc_lab.download.os.link", fail_second_link)
@@ -241,6 +242,104 @@ def test_cache_commit_rolls_back_if_a_later_link_fails(
         collection.download(tmp_path)
 
     assert all(not (tmp_path / filename).exists() for filename in filenames)
+
+
+def test_cache_commit_copies_exclusively_when_hard_links_are_unsupported(
+    tmp_path, granule_factory, fake_backend_class, monkeypatch
+) -> None:
+    raw = granule_factory()
+    filename = raw["umm"]["DataGranule"]["Identifiers"][0]["Identifier"]
+    collection = _collection(fake_backend_class([[raw]]))
+
+    def unsupported_link(source, target):
+        raise OSError(errno.ENOTSUP, "hard links are not supported")
+
+    monkeypatch.setattr("swot_pixc_lab.download.os.link", unsupported_link)
+
+    collection.download(tmp_path)
+
+    target = (tmp_path / filename).resolve()
+    assert target.read_bytes() == b"data"
+    assert collection.resolve_local().paths == (target,)
+
+
+def test_fallback_copy_is_verified_and_removed_if_corrupted(
+    tmp_path, granule_factory, fake_backend_class, monkeypatch
+) -> None:
+    raw = granule_factory()
+    filename = raw["umm"]["DataGranule"]["Identifiers"][0]["Identifier"]
+    collection = _collection(fake_backend_class([[raw]]))
+
+    def unsupported_link(source, target):
+        raise OSError(errno.ENOTSUP, "hard links are not supported")
+
+    def copy_corrupt_data(source, target, *, length):
+        target.write(b"fail")
+
+    monkeypatch.setattr("swot_pixc_lab.download.os.link", unsupported_link)
+    monkeypatch.setattr(
+        "swot_pixc_lab.download.shutil.copyfileobj",
+        copy_corrupt_data,
+    )
+
+    with pytest.raises(CacheIntegrityError, match="checksum mismatch"):
+        collection.download(tmp_path)
+
+    assert not (tmp_path / filename).exists()
+
+
+def test_fallback_copy_is_rolled_back_if_a_later_commit_fails(
+    tmp_path, granule_factory, fake_backend_class, monkeypatch
+) -> None:
+    first = granule_factory(concept_id="G1", cycle=12)
+    second = granule_factory(concept_id="G2", cycle=13)
+    collection = _collection(fake_backend_class([[first, second]]))
+    filenames = [
+        raw["umm"]["DataGranule"]["Identifiers"][0]["Identifier"]
+        for raw in (first, second)
+    ]
+    calls = 0
+
+    def fail_after_fallback(source, target):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError(errno.ENOTSUP, "hard links are not supported")
+        raise OSError(errno.EIO, "synthetic commit failure")
+
+    monkeypatch.setattr("swot_pixc_lab.download.os.link", fail_after_fallback)
+
+    with pytest.raises(DownloadError, match="rolled back"):
+        collection.download(tmp_path)
+
+    assert all(not (tmp_path / filename).exists() for filename in filenames)
+
+
+def test_fallback_rollback_preserves_a_concurrently_replaced_target(
+    tmp_path, granule_factory, fake_backend_class, monkeypatch
+) -> None:
+    first = granule_factory(concept_id="G1", cycle=12)
+    second = granule_factory(concept_id="G2", cycle=13)
+    collection = _collection(fake_backend_class([[first, second]]))
+    first_filename = first["umm"]["DataGranule"]["Identifiers"][0]["Identifier"]
+    first_target = tmp_path / first_filename
+    calls = 0
+
+    def replace_before_failure(source, target):
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise OSError(errno.ENOTSUP, "hard links are not supported")
+        first_target.unlink()
+        first_target.write_bytes(b"external")
+        raise OSError(errno.EIO, "synthetic commit failure")
+
+    monkeypatch.setattr("swot_pixc_lab.download.os.link", replace_before_failure)
+
+    with pytest.raises(DownloadError, match="rolled back"):
+        collection.download(tmp_path)
+
+    assert first_target.read_bytes() == b"external"
 
 
 def test_cache_commit_never_clobbers_a_concurrent_target(
@@ -265,3 +364,29 @@ def test_cache_commit_never_clobbers_a_concurrent_target(
         collection.download(tmp_path)
 
     assert (tmp_path / filename).read_bytes() == b"external"
+
+
+def test_fallback_copy_never_clobbers_a_concurrent_target(
+    tmp_path, granule_factory, fake_backend_class, monkeypatch
+) -> None:
+    raw = granule_factory()
+    filename = raw["umm"]["DataGranule"]["Identifiers"][0]["Identifier"]
+    target = tmp_path / filename
+    collection = _collection(fake_backend_class([[raw]]))
+    real_open = Path.open
+
+    def unsupported_link(source, target):
+        raise OSError(errno.ENOTSUP, "hard links are not supported")
+
+    def create_racing_target(path, mode="r", *args, **kwargs):
+        if path == target and mode == "xb":
+            path.write_bytes(b"external")
+        return real_open(path, mode, *args, **kwargs)
+
+    monkeypatch.setattr("swot_pixc_lab.download.os.link", unsupported_link)
+    monkeypatch.setattr(Path, "open", create_racing_target)
+
+    with pytest.raises(DownloadError, match="appeared during download"):
+        collection.download(tmp_path)
+
+    assert target.read_bytes() == b"external"

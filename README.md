@@ -121,7 +121,7 @@ DOWNLOAD_FULL_TILES = False
 cache = Path("data/pixc")
 if DOWNLOAD_FULL_TILES and len(collection):
     collection.download(cache, verify="auto", persist_credentials=False)
-    local = collection.open(cache, verify="auto")
+    local = collection.resolve_local(cache, verify="auto")
     print(local.paths)
     local.table.to_csv(cache / "granule_manifest.csv", index=False)
 ```
@@ -161,13 +161,16 @@ you understand that it writes credentials to a netrc file. See the official
 [`earthaccess` authentication guide](https://earthaccess.readthedocs.io/en/latest/user/explanation/authenticate/)
 and [NASA CMR Search API documentation](https://cmr.earthdata.nasa.gov/search/site/docs/search/api.html).
 
-## Cache and local-open semantics
+## Cache and local-resolution semantics
 
 `download(destination)` treats the destination as a filename-based cache.
 Existing files are reused only after validation. Missing files are downloaded
-to a temporary staging directory and validated as a set. They are then
-committed with no-clobber hard links; a commit failure rolls back links already
-created, and an existing or concurrently created target is never overwritten.
+to a temporary staging directory and validated as a set. Each file is committed
+with a no-clobber hard link when the filesystem supports one. Otherwise, the
+fallback opens the destination in exclusive-create mode, copies the staged
+content, and verifies the copy. Either strategy refuses an existing or
+concurrently created target, and a commit failure rolls back files created by
+the transaction.
 
 The default `verify="auto"` verifies the CMR checksum when one is available and
 supported, otherwise falling back to the CMR byte size. `verify="size"` avoids
@@ -176,11 +179,12 @@ the checksum scan for faster but weaker repeat access, while
 a regular, non-empty file. An invalid cache entry raises an actionable error
 instead of being deleted or replaced automatically.
 
-In Phase 1, `collection.open(cache_dir)` is intentionally local-only. It makes
-no network request, does not download anything, and does **not** parse NetCDF
-variables. It returns a `LocalPixcCollection`: a verified manifest with
-`paths` and a provenance `table`. Scientific PIXC opening, AOI clipping, and
-tile mosaicking are Phase 2 work.
+In Phase 1, `collection.resolve_local(cache_dir)` makes no network request,
+does not download anything, and does **not** parse NetCDF variables. It returns
+a `LocalPixcCollection`: a verified manifest with `paths` and a provenance
+`table`. The `open()` name is intentionally not implemented: it is reserved
+for scientific PIXC NetCDF opening in Phase 2, alongside later AOI clipping
+and tile mosaicking work.
 
 ## Data provenance
 

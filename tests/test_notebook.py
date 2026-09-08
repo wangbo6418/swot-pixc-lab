@@ -21,3 +21,5 @@ def test_phase1_demo_notebook_is_valid_and_guarded() -> None:
     assert "OWNER_AOI = None" in code
     assert "DOWNLOAD_FULL_TILES = False" in code
     assert "WRITE_PROVENANCE_FILES = False" in code
+    assert "collection.resolve_local(" in code
+    assert "collection.open(" not in code

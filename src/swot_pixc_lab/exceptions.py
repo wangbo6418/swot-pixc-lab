@@ -28,4 +28,4 @@ class CacheIntegrityError(DownloadError):
 
 
 class LocalFilesUnavailableError(PixcLabError):
-    """Raised when Phase-1 ``open`` cannot find all local granules."""
+    """Raised when ``resolve_local`` cannot find all local granules."""

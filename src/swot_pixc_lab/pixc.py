@@ -252,16 +252,17 @@ class PixcCollection:
         )
         return self
 
-    def open(
+    def resolve_local(
         self,
         cache_dir: str | os.PathLike[str] | None = None,
         *,
         verify: VerificationMode = "auto",
     ) -> LocalPixcCollection:
-        """Open a Phase-1 local manifest without parsing NetCDF content.
+        """Resolve and verify a Phase-1 local manifest.
 
         This method performs local verification only and never downloads data.
-        Phase 2 will add PIXC NetCDF parsing behind a separate scientific API.
+        It does not open or parse NetCDF content. The ``open`` name is reserved
+        for the Phase-2 PIXC NetCDF parsing API.
         """
 
         resolved = resolve_local_records(
@@ -288,7 +289,7 @@ class PixcCollection:
 
 @dataclass(frozen=True, slots=True)
 class LocalPixcCollection:
-    """Verified local PIXC file manifest returned by Phase-1 ``open``."""
+    """Verified local PIXC file manifest returned by ``resolve_local``."""
 
     records: tuple[GranuleRecord, ...]
     provenance: SearchProvenance | None = None
