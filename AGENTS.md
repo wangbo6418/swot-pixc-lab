@@ -76,7 +76,7 @@ collection = PixcCollection.search(
 )
 
 collection.download("./data")
-pixc = collection.open()
+local = collection.resolve_local()
 ```
 
 The exact API may change if a better design is justified.
