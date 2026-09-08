@@ -7,7 +7,7 @@ import os
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 import pandas as pd
@@ -19,6 +19,9 @@ from .discovery import GranuleRecord
 from .exceptions import ObservationMismatchError, PixcOpenError, PixcSchemaError
 from .reader import LoadedPixcSource, PixcSourceMetadata, read_pixc_source
 from .subset import ExactAoi, normalize_exact_aoi
+
+if TYPE_CHECKING:
+    from .qc import QCResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -160,6 +163,16 @@ class PixcObservation:
             "height": self.height_summary,
             "source_tile_counts": self.source_tile_counts,
         }
+
+    def apply_qc(
+        self,
+        profile: str = "raw",
+    ) -> QCResult:
+        """Apply a named Phase-3 QC profile without modifying raw PIXC values."""
+
+        from .qc import apply_qc
+
+        return apply_qc(self, profile=profile)
 
     def _valid_values(self, name: str) -> NDArray[Any] | None:
         if name not in self.pixels:

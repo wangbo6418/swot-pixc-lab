@@ -4,14 +4,18 @@ SWOT PIXC Lab is an early-stage scientific Python toolkit for finding,
 retrieving, and opening NASA Surface Water and Ocean Topography (SWOT) Level 2
 High Rate Pixel Cloud (PIXC) granules. Its long-term purpose is to support
 reproducible, pixel-level work on multiple-channel and anabranching rivers. The
-current release implements **Phases 1 and 2**: AOI/date discovery, metadata
+current release implements **Phases 1–3**: AOI/date discovery, metadata
 inspection, download/cache handling, verified local-file manifests, raw
 `/pixel_cloud` reading, exact AOI clipping, and provenance-preserving
-combination of tiles from one cycle/pass observation.
+combination of tiles from one cycle/pass observation, followed by explicit,
+metadata-driven quality-control views and a documented EGM2008 height
+derivation.
 
-The Phase 2 representation is deliberately raw. It applies no quality-control
-filter, additional height correction or WSE transformation, averaging,
-deduplication, or scientific interpretation.
+The Phase 2 representation remains deliberately raw. Phase 3 never overwrites
+it: QC results contain derived masks and filtered views while the original
+values, integer bitfields, source indices, and source-point indices remain
+available. No profile is presented as a validated universal scientific
+standard.
 
 ## Why PIXC?
 
@@ -106,7 +110,7 @@ ruff format --check .
 python -m pytest -m "not integration"
 ```
 
-## Five-minute Phase 1 and Phase 2 example
+## Five-minute Phase 1–3 example
 
 This example uses the project owner's upper Koshi River AOI and one known
 cycle/pass observation. Discovery is normally anonymous; protected PO.DAAC
@@ -118,7 +122,7 @@ download.
 ```python
 from pathlib import Path
 
-from swot_pixc_lab import PixcCollection
+from swot_pixc_lab import PixcCollection, apply_qc
 
 # West, south, east, north in EPSG:4326.
 KOSHI_AOI = (86.87, 26.49, 87.20, 26.90)
@@ -155,12 +159,29 @@ observation = local.open(aoi=KOSHI_AOI)
 print(observation.source_table.to_string(index=False))
 print(observation.summary())
 raw_pixels = observation.raw  # xarray.Dataset; no QC or WSE transformation
+
+# Phase 3 creates transparent masks/views; observation.raw is unchanged.
+raw = observation.apply_qc(profile="raw")
+legacy = apply_qc(observation, profile="bo_legacy_strict")
+extent = observation.apply_qc(profile="channel_extent_candidate")
+
+print(legacy.summary)
+print(legacy.reason_counts)  # each rule evaluated independently
+print(legacy.incremental_reason_counts)  # removal in documented rule order
+print(extent.filtered)  # still has per-pixel provenance
 ```
 
 With the two project-owner Koshi files already cached, run
 [`examples/koshi_phase2_reality_check.py`](examples/koshi_phase2_reality_check.py)
 from the repository root for the reproducible schema, provenance, and pixel-
 count validation used in Phase 2.
+
+The corresponding Phase 3 real-data regression is
+[`examples/koshi_phase3_reality_check.py`](examples/koshi_phase3_reality_check.py).
+It never downloads files and reports the raw, legacy, and experimental-profile
+results for the two existing Koshi tiles. The resulting scientific evidence,
+exact rule definitions, and open review questions are recorded in
+[`docs/phase3_koshi_qc_report.md`](docs/phase3_koshi_qc_report.md).
 
 `local.open(aoi=...)` reads the real `/pixel_cloud` group, excludes only points
 that cannot be spatially located or do not intersect the exact AOI, and then
@@ -170,12 +191,19 @@ coordinate counts, raw classification counts, coordinate ranges, an
 unfiltered summary of the reported ellipsoidal `height`, and retained counts by
 source tile.
 
-The default point variables are `azimuth_index`, `range_index`, `latitude`,
-`longitude`, `height`, `classification`, `water_frac`, `pixel_area`, `sig0`,
-and `cross_track`, together with available one-dimensional point quality
-variables ending in `_qual`. Pass an explicit `variables=(...)` sequence to
-load a smaller compatible selection; `latitude` and `longitude` are always
-included because exact clipping requires them.
+The default point variables now include the Phase 2 core fields
+`azimuth_index`, `range_index`, `latitude`, `longitude`, `height`,
+`classification`, `water_frac`, `pixel_area`, `sig0`, and `cross_track`, plus
+the Phase 3 fields `water_frac_uncert`, `geoid`, `inc`, `phase_noise_std`,
+`bright_land_flag`, `false_detection_rate`, `missed_detection_rate`,
+`prior_water_prob`, `prior_water_change`, and
+`ancillary_surface_classification_flag`. All available one-dimensional point
+quality variables ending in `_qual` are also loaded, including
+`classification_qual`, `geolocation_qual`, `interferogram_qual`, and
+`sig0_qual`. Pass an explicit `variables=(...)` sequence to load a smaller
+compatible selection; `latitude` and `longitude` are always included because
+exact clipping requires them. A QC profile records a skipped rule instead of
+inventing a substitute when an optional input is absent.
 
 `collection.table` is a defensive-copy pandas table. Available columns are:
 
@@ -326,12 +354,71 @@ including the data-access date.
 
 ## QC philosophy
 
-Phase 2 exposes the official pixel-quality variables and metadata but does not
-filter on them. Future QC will be a separate, explicit layer: raw values and
-official flags will remain available, undocumented numeric values will never
-be classified by guesswork, every removal rule will be recorded, and
-before/removed/retained counts will be returned. Until that layer exists, this
-package makes no claim that clipped pixels are analysis-ready.
+Phase 3 is a separate layer over the Phase 2 raw observation. Calling
+`apply_qc(observation, profile=...)` or `observation.apply_qc(...)` returns a
+result with the selected profile, a boolean mask aligned to every raw point, a
+detached filtered xarray dataset, named reason masks, rule outcomes, decoded
+quality flags, and summary counts. Both retained and rejected pixels remain
+traceable through the unchanged `source_index` and `source_point_index` arrays
+in the raw observation.
+
+The decoder follows CF-style flag metadata instead of embedding undocumented
+integer interpretations. It reads `_FillValue`, `valid_min`, `valid_max`,
+`flag_masks`, `flag_values`, and `flag_meanings` from the loaded variable.
+Original quality arrays remain `uint32`; each official condition is exposed as
+a derived boolean mask. Fill values are handled before bit operations so the
+`0xffffffff` fill value cannot be mistaken for every flag being set. The four
+PIXC point-quality fields use combinable masks, not mutually exclusive
+`good`/`suspect`/`bad` summary codes: zero means no named condition is set,
+while a nonzero value can contain one or more suspect, degraded, missing, or
+bad conditions.
+
+Three profiles are available:
+
+- `raw` retains every Phase 2 exact-AOI pixel. It performs no additional
+  scientific filtering.
+- `bo_legacy_strict` reproduces the project owner's conservative, WSE-oriented
+  legacy sequence: `classification == 4`, `water_frac >= 0.90`,
+  `water_frac_uncert <= 0.15`, `bright_land_flag == 0`,
+  `false_detection_rate <= 0.10`, each of the four point `*_qual` integers
+  equal to zero, `phase_noise_std <= 1.0`, and inclusive
+  `0.5 <= inc <= 5.0` degrees. It is a reproducibility profile, not a NASA
+  recommendation. Rules whose variables are absent are reported as skipped.
+- `channel_extent_candidate` is experimental. It keeps the documented water
+  classes 3–7 rather than only class 4 and imposes no per-pixel water-fraction
+  threshold. It requires valid classification and classification/geolocation
+  quality values with no undocumented set bits, rejects `classification_qual`
+  conditions
+  `in_air_pixel_degraded`, `coherent_power_bad`, `tvp_bad`, `sc_event_bad`, and
+  `large_karin_gap`, and rejects `geolocation_qual` conditions
+  `no_geolocation_bad`, `medium_phase_bad`, `tvp_bad`, `sc_event_bad`, and
+  `large_karin_gap`. Other suspect/degraded conditions remain visible
+  diagnostics. `interferogram_qual` and `sig0_qual` do not otherwise filter
+  this profile, but the independently reported `interferogram_qual`
+  `in_air_pixel_degraded` condition is also excluded because it states that
+  the range bin does not intersect Earth's surface.
+
+Every rule records its variable, condition, scientific rationale, definition
+source, and outcome. `reason_counts` are independent failure counts, so one
+pixel can appear under several reasons and those counts must not be summed.
+`incremental_reason_counts` report only newly removed pixels as rules are
+applied in their documented order. The final removed count is therefore not
+generally the sum of independent reason counts.
+
+When the loaded `geoid` metadata explicitly identifies EGM2008 in metres above
+the reference ellipsoid, Phase 3 adds the derived variable
+`height_egm2008 = height - geoid`. Raw `height` and `geoid` remain unchanged.
+If the model identity is not explicit but the units and reference metadata are
+compatible, the safer name `height_minus_geoid` is used instead.
+The supplied geoid is in the mean-tide system; the derivation changes the
+height reference and is **not corrected WSE**. Phase 3 does not apply solid
+Earth, load, or pole tides, tropospheric or ionospheric corrections, or any
+other geophysical field.
+
+These profiles make filtering inspectable and reproducible; they do not make
+the retained pixels automatically analysis-ready. In particular, the
+experimental extent profile still requires review by a SWOT/river scientist
+before use in any channel-geometry method.
 
 ## Current limitations
 
@@ -348,15 +435,22 @@ package makes no claim that clipped pixels are analysis-ready.
 - The reader eagerly loads selected one-dimensional `/pixel_cloud/points`
   variables into memory. The `/tvp` and `/noise` groups and non-point variables
   are not combined into the pixel dataset.
+- `pixc_line_qual` remains line-level schema metadata; it is not broadcast or
+  expanded across points, and Phase 3 does not use it as a point filter.
 - Tile combination is stable concatenation. It intentionally does not detect,
   average, or remove coincident or duplicate pixels.
 - Longitude normalization is used only for clipping; original longitudes are
   retained. Polygon edges crossing the antimeridian must be split into an
   explicit MultiPolygon.
-- The current notebook demonstrates Phase 1 discovery and download. A complete
-  Phase 2 scientific notebook, quality inspection, visualization, and export
-  workflow are not yet implemented.
-- No QC filtering, corrected WSE, uncertainty propagation, or research-ready
+- The current notebook demonstrates Phase 1 discovery and download. Phase 2
+  and Phase 3 real-data scripts are provided, but a combined scientific
+  notebook, visualization, and export workflow is not yet implemented.
+- The legacy QC profile is intentionally conservative and is retained for
+  reproducibility, not endorsed as a universal WSE filter. The
+  `channel_extent_candidate` profile is explicitly experimental and has not
+  been validated as a channel-boundary or width method.
+- `height_egm2008` is a metadata-checked `height - geoid` derivation. No
+  corrected WSE, tide adjustment, uncertainty propagation, or research-ready
   export is implemented.
 - No multi-channel segmentation, width, WSE comparison, or morphological
   interpretation is implemented.
@@ -370,10 +464,12 @@ package makes no claim that clipped pixels are analysis-ready.
 
 1. **Phase 1 (complete):** CMR discovery, metadata, download/cache, and verified
    local manifests.
-2. **Phase 2 (current):** metadata-preserving Version D `/pixel_cloud` reading,
+2. **Phase 2 (complete):** metadata-preserving Version D `/pixel_cloud` reading,
    exact AOI clipping, and no-loss combination of tiles from one observation.
-3. **Phase 3:** preserve raw pixels and add documented, auditable QC with
-   removal summaries.
+3. **Phase 3 (current, complete):** preserve raw pixels; decode official
+   Version D quality flags; provide raw, legacy, and experimental QC profiles
+   with auditable removal summaries; and derive metadata-verified EGM2008
+   height without claiming corrected WSE.
 4. **Phase 4:** scalable pixel visualization and research-ready export.
 5. Validate experimental multiple-channel methods with SWOT specialists,
    independent observations, and sensitivity tests.

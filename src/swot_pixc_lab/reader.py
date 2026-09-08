@@ -19,7 +19,7 @@ from .exceptions import PixcOpenError, PixcSchemaError
 from .subset import ExactAoi, clip_points
 
 REQUIRED_COORDINATES = ("latitude", "longitude")
-DEFAULT_POINT_VARIABLES = (
+CORE_POINT_VARIABLES = (
     "azimuth_index",
     "range_index",
     "latitude",
@@ -30,6 +30,28 @@ DEFAULT_POINT_VARIABLES = (
     "pixel_area",
     "sig0",
     "cross_track",
+)
+PHASE3_POINT_VARIABLES = (
+    "classification",
+    "water_frac",
+    "water_frac_uncert",
+    "height",
+    "geoid",
+    "inc",
+    "phase_noise_std",
+    "bright_land_flag",
+    "false_detection_rate",
+    "missed_detection_rate",
+    "prior_water_prob",
+    "prior_water_change",
+    "classification_qual",
+    "geolocation_qual",
+    "interferogram_qual",
+    "sig0_qual",
+    "ancillary_surface_classification_flag",
+)
+DEFAULT_POINT_VARIABLES = tuple(
+    dict.fromkeys((*CORE_POINT_VARIABLES, *PHASE3_POINT_VARIABLES))
 )
 PROVENANCE_VARIABLES = frozenset({"source_index", "source_point_index"})
 _TILE_NAME = re.compile(r"(?P<pass>\d{3})_(?P<tile>\d{3}[LRF])$")
