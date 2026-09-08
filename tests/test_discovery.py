@@ -21,9 +21,9 @@ def _multipolygon():
     }
 
 
-def test_collection_reserves_open_for_phase2() -> None:
+def test_collection_exposes_phase2_open_api() -> None:
     assert callable(PixcCollection.resolve_local)
-    assert not hasattr(PixcCollection, "open")
+    assert callable(PixcCollection.open)
 
 
 def test_search_queries_components_deduplicates_and_sorts(

@@ -1,4 +1,4 @@
-"""Public Phase-1 collection API for SWOT L2 HR PIXC granules."""
+"""Public discovery, local-resolution, and PIXC-opening APIs."""
 
 from __future__ import annotations
 
@@ -34,6 +34,7 @@ from .download import (
     resolve_local_records,
 )
 from .exceptions import DiscoveryError
+from .mosaic import PixcObservation, _validate_record_selection, open_pixc
 
 LOGGER = logging.getLogger(__name__)
 _COLLECTION_ID = re.compile(r"^C\d+-[A-Za-z0-9_]+$")
@@ -65,9 +66,9 @@ class SearchProvenance:
 class PixcCollection:
     """A discovered set of SWOT L2 HR PIXC granules.
 
-    This Phase-1 object stores discovery metadata and opaque Earthdata handles.
-    It intentionally does not parse NetCDF variables, subset pixels, apply QC,
-    or mosaic tiles; those are later phases.
+    Discovery metadata and opaque Earthdata handles remain separate from the
+    raw point data. :meth:`open` resolves verified local files and performs the
+    Phase-2 raw read, exact clip, and no-loss tile combination.
     """
 
     def __init__(
@@ -273,6 +274,25 @@ class PixcCollection:
         self._records = resolved
         return LocalPixcCollection(resolved, provenance=self.provenance)
 
+    def open(
+        self,
+        *,
+        aoi: AoiInput,
+        cache_dir: str | os.PathLike[str] | None = None,
+        verify: VerificationMode = "auto",
+        variables: Sequence[str] | None = None,
+    ) -> PixcObservation:
+        """Open verified local PIXC files as one raw clipped observation.
+
+        This method never downloads implicitly. It preserves documented raw
+        values and quality bitfields, clips exactly to ``aoi``, and concatenates
+        source tiles without filtering, averaging, or deduplication.
+        """
+
+        _validate_record_selection(self._records)
+        local = self.resolve_local(cache_dir, verify=verify)
+        return local.open(aoi=aoi, variables=variables)
+
     def __len__(self) -> int:
         return len(self._records)
 
@@ -305,6 +325,21 @@ class LocalPixcCollection:
         """Return metadata and provenance for the local files."""
 
         return _records_to_frame(self.records)
+
+    def open(
+        self,
+        *,
+        aoi: AoiInput,
+        variables: Sequence[str] | None = None,
+    ) -> PixcObservation:
+        """Read, exactly clip, and concatenate this verified local manifest."""
+
+        return open_pixc(
+            self.paths,
+            aoi=aoi,
+            records=self.records,
+            variables=variables,
+        )
 
     def __len__(self) -> int:
         return len(self.records)
