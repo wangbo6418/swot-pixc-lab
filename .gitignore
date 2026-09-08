@@ -216,3 +216,11 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# SWOT PIXC Lab local data and test environments
+data/
+*.nc
+*.nc4
+.test_tmp/
+.test_tools/
+.test_venv/
