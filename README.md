@@ -4,17 +4,19 @@ SWOT PIXC Lab is an early-stage scientific Python toolkit for finding,
 retrieving, and opening NASA Surface Water and Ocean Topography (SWOT) Level 2
 High Rate Pixel Cloud (PIXC) granules. Its long-term purpose is to support
 reproducible, pixel-level work on multiple-channel and anabranching rivers. The
-current release implements **Phases 1–4, the Phase 5A.1 manual benchmark, and
-the experimental Phase 5A.2 candidate-inference baseline**: AOI/date discovery,
-metadata inspection, download/cache handling, verified local-file manifests, raw
-`/pixel_cloud` reading, exact AOI clipping, and provenance-preserving
+current release implements **Phases 1–4, the Phase 5A.1 manual benchmark, the
+experimental Phase 5A.2 candidate-inference baseline, and the Phase 5A.3a
+validation framework**: AOI/date discovery, metadata inspection,
+download/cache handling, verified local-file manifests, raw `/pixel_cloud`
+reading, exact AOI clipping, and provenance-preserving
 combination of tiles from one cycle/pass observation, followed by explicit,
 metadata-driven quality-control views and a documented EGM2008 height
 derivation, scalable plan-view visualization, auditable sampling around
 user-supplied manual transects, explicit analyst-supplied wet-interval
-measurements, and fixed station-bin candidate wet-support inference. Phase
-5A.2 does not produce validated physical banks, research-grade widths, or
-automatic branch identities.
+measurements, fixed station-bin candidate wet-support inference, and continuous
+one-dimensional agreement metrics against an analyst-supplied reference.
+Neither validation scores nor Phase 5A.2 produce validated physical banks,
+research-grade widths, or automatic branch identities.
 
 The Phase 2 representation remains deliberately raw. Phase 3 never overwrites
 it: QC results contain derived masks and filtered views while the original
@@ -611,6 +613,45 @@ without selecting a best one. See
 for the exact bin, bridge, support/span, provenance, plotting, and validation
 contract.
 
+## Phase 5A.3a quantitative interval validation
+
+Phase 5A.3a compares one Phase 5A.1 analyst reference with both Phase 5A.2
+prediction sets: observed candidate-wet bin support without bridges and final
+bridge-inclusive candidate intervals. It uses continuous interval lengths,
+not pixel counts or a rasterized manual reference:
+
+```python
+from swot_pixc_lab import (
+    evaluate_candidate_against_explicit,
+    plot_interval_validation,
+)
+
+validation = evaluate_candidate_against_explicit(reference, candidate)
+print(validation.summary_dataframe())
+plot_interval_validation(reference, candidate, validation=validation)
+```
+
+The result keeps separate `observed_support_` and `bridge_inclusive_` metrics
+for overlap, total-width error, outer-span error, component-count difference,
+and symmetric nearest-boundary diagnostics. Bridge overlap with manually wet
+and manually nonwet space is reported separately. Nearest-boundary distances
+are diagnostics, not one-to-one bank or branch matching.
+
+`evaluate_sensitivity_against_explicit(...)` evaluates an ordered Phase 5A.2
+sensitivity result against one manual reference without ranking, optimizing,
+or choosing a configuration. `ManualBenchmarkMetadata` and
+`create_manual_benchmark_record(...)` associate descriptive annotation context
+with the existing Phase 5A.1 result; independent analysts remain independent
+records. See
+[`docs/phase5a3_validation_protocol.md`](docs/phase5a3_validation_protocol.md)
+and the explicitly synthetic
+[`examples/manual_interval_benchmark_example.json`](examples/manual_interval_benchmark_example.json).
+
+**Validation metrics measure agreement with an analyst-supplied reference.
+They do not by themselves prove that the manual reference is error-free.** No
+Koshi annotations, parameter tuning, holdout split, or real-data performance
+claim is part of Phase 5A.3a.
+
 ## Current limitations
 
 - CMR footprint intersection can return tiles with no pixels inside the exact
@@ -647,6 +688,10 @@ contract.
   does not infer validated physical banks, extract branches, calculate a
   research-grade width, compare WSE, or interpret morphology. Phase 5A.1
   remains the separate explicit analyst-supplied benchmark.
+- Phase 5A.3a measures agreement with that declared manual reference; it does
+  not certify the reference as truth, rank candidate configurations, infer
+  branch correspondence, or establish transferability to another analyst,
+  observation, site, or river.
 - Map rasterization can display hundreds of thousands or millions of points
   without one artist per pixel, but dense points still overplot at finite image
   resolution. In particular, a three-pixel profile difference is not expected
@@ -676,16 +721,23 @@ contract.
 4. **Phase 4 (complete):** scalable plan-view plots, classification
    comparison, and auditable user-supplied metric transect sampling and
    diagnostics without width inference.
-5. **Phase 5A.1 (current, complete):** immutable explicit wet-interval,
+5. **Phase 5A.1 (complete):** immutable explicit wet-interval,
    internal-gap, total-wetted-width, and outer-span benchmark contract; no
    automatic bank or branch inference.
-6. **Phase 5A.2 (current, complete):** experimental fixed station-bin
+6. **Phase 5A.2 (complete):** experimental fixed station-bin
    candidate wet-support inference with explicit parameters, three evidence
    states, recorded optional bridges, and unranked sensitivity summaries; no
    validated banks, research-grade width, or branch extraction.
-7. Validate experimental multiple-channel methods with SWOT specialists,
-   independent observations, and sensitivity tests.
-8. Consider a web interface or AI orchestration only after the scientific API
+7. **Phase 5A.3a (current, complete):** continuous interval-set validation of
+   observed and bridge-inclusive candidates against a Phase 5A.1 reference,
+   plus unranked sensitivity comparison and synthetic benchmark-record
+   scaffolding.
+8. **Phase 5A.3b (future):** owner-approved Koshi development and holdout
+   validation using independent imagery and repeat analysts; no parameters or
+   split have been selected.
+9. Validate later multiple-channel methods with SWOT specialists, independent
+   observations, and sensitivity tests.
+10. Consider a web interface or AI orchestration only after the scientific API
    is stable. Neither is part of the current implementation.
 
 ## Official references

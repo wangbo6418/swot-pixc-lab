@@ -1,0 +1,138 @@
+{
+  "format_name": "swot_pixc_lab_manual_interval_benchmark_collection",
+  "format_version": "1.0",
+  "synthetic_example": true,
+  "warning": "SYNTHETIC EXAMPLE ONLY. This is not Koshi data, real imagery, or validated river-bank truth.",
+  "generation_instruction": "Create every explicit_interval_reference with measure_explicit_wet_intervals, associate metadata with create_manual_benchmark_record, and serialize record.as_dict(). Do not hand-calculate or hand-edit derived width fields.",
+  "records": [
+    {
+      "schema_version": "1.0",
+      "metadata": {
+        "benchmark_id": "synthetic_benchmark_001",
+        "transect_id": "synthetic_transect_001",
+        "annotation_id": "synthetic_transect_001_analyst_a",
+        "observation_identifier": "SYNTHETIC_OBSERVATION_NOT_REAL",
+        "observation_date": null,
+        "site_label": "Synthetic two-interval demonstration; not a real site",
+        "analyst_id": "synthetic_analyst_a",
+        "analyst_label": "Synthetic Analyst A",
+        "reference_source_description": "Synthetic diagram only; no satellite image or field observation was used",
+        "reference_acquisition_date": null,
+        "temporal_offset_hours": null,
+        "annotation_confidence": "synthetic-example-only; not a scientific confidence category",
+        "notes": "Independent example record A. Replace every synthetic value when creating a real benchmark."
+      },
+      "explicit_interval_reference": {
+        "method_id": "explicit_analyst_wet_intervals_v1",
+        "method_status": "EXPERIMENTAL / MANUAL BENCHMARK CONTRACT",
+        "method_warning": "Wet interval boundaries are supplied by the analyst in Phase 5A.1. They are not automatically inferred from SWOT PIXC.",
+        "manual_intervals": [
+          {
+            "interval_id": 1,
+            "start_station_m": 0.0,
+            "end_station_m": 100.0,
+            "width_m": 100.0
+          },
+          {
+            "interval_id": 2,
+            "start_station_m": 150.0,
+            "end_station_m": 250.0,
+            "width_m": 100.0
+          }
+        ],
+        "measurement_summary": {
+          "interval_count": 2,
+          "total_wetted_width_m": 200.0,
+          "outer_wetted_span_m": 250.0,
+          "total_internal_dry_gap_m": 50.0
+        },
+        "station_frame": {
+          "transect_wkt": "LINESTRING (0 0, 0.0026949459 0)",
+          "transect_crs": "EPSG:4326",
+          "transect_length_m": 300.0,
+          "metric_crs_wkt": "SYNTHETIC EXAMPLE PLACEHOLDER; use the exact WKT serialized by Phase 5A.1",
+          "projection_center": [
+            0.00134747295,
+            0.0
+          ],
+          "corridor_half_width_m": 10.0
+        },
+        "upstream_context": {
+          "profile_name": null,
+          "profile_label": null,
+          "profile_status": null,
+          "selected_pixel_count": 0,
+          "classification_counts": {},
+          "source_counts": {},
+          "source_tile_counts": {},
+          "source_summaries": []
+        }
+      }
+    },
+    {
+      "schema_version": "1.0",
+      "metadata": {
+        "benchmark_id": "synthetic_benchmark_001",
+        "transect_id": "synthetic_transect_001",
+        "annotation_id": "synthetic_transect_001_analyst_b",
+        "observation_identifier": "SYNTHETIC_OBSERVATION_NOT_REAL",
+        "observation_date": null,
+        "site_label": "Synthetic two-interval demonstration; not a real site",
+        "analyst_id": "synthetic_analyst_b",
+        "analyst_label": "Synthetic Analyst B",
+        "reference_source_description": "Synthetic diagram only; no satellite image or field observation was used",
+        "reference_acquisition_date": null,
+        "temporal_offset_hours": null,
+        "annotation_confidence": "synthetic-example-only; not a scientific confidence category",
+        "notes": "Independent example record B. It is intentionally not averaged with record A."
+      },
+      "explicit_interval_reference": {
+        "method_id": "explicit_analyst_wet_intervals_v1",
+        "method_status": "EXPERIMENTAL / MANUAL BENCHMARK CONTRACT",
+        "method_warning": "Wet interval boundaries are supplied by the analyst in Phase 5A.1. They are not automatically inferred from SWOT PIXC.",
+        "manual_intervals": [
+          {
+            "interval_id": 1,
+            "start_station_m": 0.0,
+            "end_station_m": 95.0,
+            "width_m": 95.0
+          },
+          {
+            "interval_id": 2,
+            "start_station_m": 155.0,
+            "end_station_m": 250.0,
+            "width_m": 95.0
+          }
+        ],
+        "measurement_summary": {
+          "interval_count": 2,
+          "total_wetted_width_m": 190.0,
+          "outer_wetted_span_m": 250.0,
+          "total_internal_dry_gap_m": 60.0
+        },
+        "station_frame": {
+          "transect_wkt": "LINESTRING (0 0, 0.0026949459 0)",
+          "transect_crs": "EPSG:4326",
+          "transect_length_m": 300.0,
+          "metric_crs_wkt": "SYNTHETIC EXAMPLE PLACEHOLDER; use the exact WKT serialized by Phase 5A.1",
+          "projection_center": [
+            0.00134747295,
+            0.0
+          ],
+          "corridor_half_width_m": 10.0
+        },
+        "upstream_context": {
+          "profile_name": null,
+          "profile_label": null,
+          "profile_status": null,
+          "selected_pixel_count": 0,
+          "classification_counts": {},
+          "source_counts": {},
+          "source_tile_counts": {},
+          "source_summaries": []
+        }
+      }
+    }
+  ],
+  "multi_analyst_policy": "Keep each annotation record independent. Do not average boundaries, select a preferred analyst, or infer consensus geometry automatically."
+}

@@ -57,3 +57,7 @@ class WidthError(PixcLabError, ValueError):
 
 class BankInferenceError(PixcLabError, ValueError):
     """Raised when experimental candidate-interval inference is invalid."""
+
+
+class ValidationError(PixcLabError, ValueError):
+    """Raised when interval validation inputs or records are incompatible."""
