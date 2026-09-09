@@ -27,6 +27,7 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.figure import Figure
 
+    from .bank_inference import CandidateIntervalInferenceResult
     from .transect import TransectSample
     from .width import ExplicitIntervalWidthResult
 
@@ -580,6 +581,162 @@ def plot_wet_interval_summary(
     return axes
 
 
+def plot_candidate_wet_interval_inference(
+    result: CandidateIntervalInferenceResult,
+    *,
+    ax: Axes | None = None,
+    title: str | None = None,
+) -> Axes:
+    """Plot fixed-bin candidate evidence without implying physical banks.
+
+    The three original bin states retain distinct styles. Accepted bridge
+    overlays do not recolor an unsampled or below-threshold bin as observed
+    water, and interval outlines mark only station-bin edges.
+    """
+
+    from .bank_inference import CandidateIntervalInferenceResult
+
+    if not isinstance(result, CandidateIntervalInferenceResult):
+        raise TypeError("result must be a CandidateIntervalInferenceResult.")
+
+    axes = _axes_or_new(ax)
+    _, _, patches = _import_matplotlib()
+    styles = {
+        "candidate_wet": {
+            "facecolor": "#1f78b4",
+            "edgecolor": "#0b3c5d",
+            "hatch": None,
+        },
+        "sampled_noneligible": {
+            "facecolor": "#e6c78c",
+            "edgecolor": "#8c6d31",
+            "hatch": "..",
+        },
+        "unsampled": {
+            "facecolor": "#f2f2f2",
+            "edgecolor": "#777777",
+            "hatch": "xx",
+        },
+    }
+    for item in result.bins:
+        style = styles[item.state]
+        rectangle = patches.Rectangle(
+            (item.start_station_m, 0.2),
+            item.bin_span_m,
+            0.35,
+            linewidth=0.7,
+            zorder=2,
+            **style,
+        )
+        rectangle.set_gid(f"swot-pixc-lab:candidate-bin-{item.bin_id}")
+        axes.add_patch(rectangle)
+
+    for bridge in result.bridge_records:
+        rectangle = patches.Rectangle(
+            (bridge.gap_start_station_m, 0.58),
+            bridge.gap_width_m,
+            0.12,
+            facecolor="none",
+            edgecolor="#d95f02",
+            hatch="////",
+            linewidth=1.4,
+            zorder=4,
+        )
+        rectangle.set_gid(f"swot-pixc-lab:candidate-bridge-{bridge.bridge_id}")
+        axes.add_patch(rectangle)
+
+    for interval in result.candidate_intervals:
+        rectangle = patches.Rectangle(
+            (interval.start_station_m, 0.12),
+            interval.inferred_candidate_interval_span_m,
+            0.66,
+            facecolor="none",
+            edgecolor="#6a3d9a",
+            linestyle="--",
+            linewidth=1.3,
+            zorder=5,
+        )
+        rectangle.set_gid(
+            f"swot-pixc-lab:candidate-interval-{interval.candidate_interval_id}"
+        )
+        axes.add_patch(rectangle)
+
+    outer_text = (
+        "not defined"
+        if result.outer_candidate_wetted_span_m is None
+        else f"{result.outer_candidate_wetted_span_m:g} m"
+    )
+    axes.text(
+        0.5,
+        0.9,
+        f"Observed candidate wet-bin support: "
+        f"{result.observed_candidate_wet_support_m:g} m; "
+        f"summed inferred interval span: "
+        f"{result.total_inferred_candidate_interval_span_m:g} m; "
+        f"outer candidate span: {outer_text}; "
+        f"bridged gaps: {result.total_bridged_gap_m:g} m",
+        transform=axes.transAxes,
+        ha="center",
+        va="center",
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.9},
+        zorder=6,
+    )
+    classes = ", ".join(str(value) for value in result.extent_classes)
+    heading = title or "Fixed station-bin candidate wet-support inference"
+    axes.set_title(
+        f"{heading}\n{result.method_status}; candidate bin edges are not "
+        "validated physical banks; unsampled ≠ dry\n"
+        f"classes=({classes}); bin={result.station_bin_width_m:g} m; "
+        f"minimum={result.min_extent_pixels_per_bin}; bridge tolerance="
+        f"{result.max_bridge_gap_m:g} m"
+    )
+    axes.set_xlabel("Station along user-supplied transect (m)")
+    axes.set_xlim(0.0, result.transect_length_m)
+    axes.set_ylim(0.0, 1.0)
+    axes.set_yticks([])
+    axes.set_axisbelow(True)
+    axes.grid(axis="x", color="#d9d9d9", linewidth=0.6)
+    handles = [
+        patches.Patch(
+            facecolor=styles["candidate_wet"]["facecolor"],
+            edgecolor=styles["candidate_wet"]["edgecolor"],
+            label="candidate wet-support bin (classification evidence)",
+        ),
+        patches.Patch(
+            facecolor=styles["sampled_noneligible"]["facecolor"],
+            edgecolor=styles["sampled_noneligible"]["edgecolor"],
+            hatch=styles["sampled_noneligible"]["hatch"],
+            label="sampled below threshold (not confirmed dry)",
+        ),
+        patches.Patch(
+            facecolor=styles["unsampled"]["facecolor"],
+            edgecolor=styles["unsampled"]["edgecolor"],
+            hatch=styles["unsampled"]["hatch"],
+            label="unsampled (unknown; not confirmed dry)",
+        ),
+    ]
+    if result.bridge_records:
+        handles.append(
+            patches.Patch(
+                facecolor="none",
+                edgecolor="#d95f02",
+                hatch="////",
+                label="caller-authorized bridged gap",
+            )
+        )
+    if result.candidate_intervals:
+        handles.append(
+            patches.Patch(
+                facecolor="none",
+                edgecolor="#6a3d9a",
+                linestyle="--",
+                label="candidate interval boundary (station-bin edge)",
+            )
+        )
+    axes.legend(handles=handles, loc="lower right", fontsize="small")
+    return axes
+
+
 def _plot_map_layer(
     resolved: ResolvedPixelInput,
     *,
@@ -1095,6 +1252,7 @@ __all__ = [
     "CLASSIFICATION_LABELS",
     "SUPPORTED_COLOR_VARIABLES",
     "plot_classification_comparison",
+    "plot_candidate_wet_interval_inference",
     "plot_pixc_map",
     "plot_transect_classification",
     "plot_transect_corridor",

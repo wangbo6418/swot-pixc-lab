@@ -180,7 +180,10 @@ Phase 4 supplies the user-defined transect, local AEQD station coordinate,
 sampling corridor, selected pixels, QC identity, and provenance. Phase 5A.1
 adds only the analyst's measurement records.
 
-A future Phase 5A.2 may evaluate explicit candidate PIXC-to-bank rules against
-this manual baseline. Future automatic branch topology would be a separate
-scientific layer and must not reinterpret `interval_id` as a persistent branch
-identifier. Neither future capability is implemented here.
+Phase 5A.2 now provides a separate experimental fixed station-bin candidate
+inference baseline for later comparison against this manual contract; it does
+not alter or populate Phase 5A.1 analyst records. See
+[`phase5a2_candidate_bank_inference.md`](phase5a2_candidate_bank_inference.md).
+Future automatic branch topology remains a separate scientific layer and must
+not reinterpret `interval_id` or `candidate_interval_id` as a persistent branch
+identifier.

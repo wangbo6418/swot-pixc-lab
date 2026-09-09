@@ -4,15 +4,17 @@ SWOT PIXC Lab is an early-stage scientific Python toolkit for finding,
 retrieving, and opening NASA Surface Water and Ocean Topography (SWOT) Level 2
 High Rate Pixel Cloud (PIXC) granules. Its long-term purpose is to support
 reproducible, pixel-level work on multiple-channel and anabranching rivers. The
-current release implements **Phases 1–4 plus the Phase 5A.1 manual benchmark**:
-AOI/date discovery, metadata
-inspection, download/cache handling, verified local-file manifests, raw
+current release implements **Phases 1–4, the Phase 5A.1 manual benchmark, and
+the experimental Phase 5A.2 candidate-inference baseline**: AOI/date discovery,
+metadata inspection, download/cache handling, verified local-file manifests, raw
 `/pixel_cloud` reading, exact AOI clipping, and provenance-preserving
 combination of tiles from one cycle/pass observation, followed by explicit,
 metadata-driven quality-control views and a documented EGM2008 height
 derivation, scalable plan-view visualization, auditable sampling around
-user-supplied manual transects, and explicit analyst-supplied wet-interval
-measurements. Phase 5A.1 does not infer banks or branches automatically.
+user-supplied manual transects, explicit analyst-supplied wet-interval
+measurements, and fixed station-bin candidate wet-support inference. Phase
+5A.2 does not produce validated physical banks, research-grade widths, or
+automatic branch identities.
 
 The Phase 2 representation remains deliberately raw. Phase 3 never overwrites
 it: QC results contain derived masks and filtered views while the original
@@ -37,8 +39,10 @@ can occupy one reach, and feature-level summaries do not by themselves expose
 the evidence needed to separate branches or evaluate gaps, bank edges,
 layover, dark water, and classification uncertainty. PIXC retains the
 pixel-level evidence needed for that future analysis. This package does **not**
-yet infer channel widths automatically or interpret river morphology. Its only
-width contract records boundaries supplied explicitly by an analyst.
+yet produce validated channel widths or interpret river morphology. Phase 5A.1
+records boundaries supplied explicitly by an analyst; Phase 5A.2 is a separate
+experimental station-bin candidate-inference baseline, not automatic branch
+extraction.
 
 ## Product and API decisions
 
@@ -101,7 +105,7 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-For the Phase 4 scientific plots and notebooks:
+For the Phase 4 and Phase 5 scientific diagnostic plots and notebooks:
 
 ```bash
 python -m pip install -e ".[visualization,notebook]"
@@ -560,6 +564,53 @@ components require an explicit positive dry gap. See
 [`docs/phase5a_width_contract.md`](docs/phase5a_width_contract.md) for the
 complete definitions, empty-result behavior, audit model, and limitations.
 
+## Phase 5A.2 experimental candidate inference
+
+Phase 5A.2 converts the classification evidence in a Phase 4 sample into fixed
+station-bin candidate wet-support intervals. All scientific parameters are
+required; the values below are illustrative only, not recommendations or
+Koshi-tuned settings:
+
+```python
+from swot_pixc_lab import (
+    infer_candidate_wet_intervals,
+    plot_candidate_wet_interval_inference,
+)
+
+candidate = infer_candidate_wet_intervals(
+    sample,
+    extent_classes=(3, 4, 5),
+    station_bin_width_m=25.0,
+    min_extent_pixels_per_bin=2,
+    max_bridge_gap_m=0.0,
+)
+
+print(candidate.bins_dataframe())
+print(candidate.intervals_dataframe())
+plot_candidate_wet_interval_inference(candidate)
+```
+
+Bins cover the full finite transect. A bin edge belongs to the bin on its
+right, except that the final bin includes the transect endpoint. Bin state is
+controlled only by valid `classification` membership and the explicit count
+threshold: `candidate_wet`, sampled but below threshold
+(`sampled_noneligible`), or no sampled evidence (`unsampled`).
+
+**Candidate interval edges are not validated physical river banks. An
+unsampled bin is not treated as confirmed dry land.** Optional positive gap
+bridging connects only internal candidate runs within the requested physical
+tolerance, preserves each bin's original evidence state, and records every
+bridge. Observed candidate wet-bin support excludes bridges; inferred interval
+span includes them. These quantities are not validated river widths.
+
+Phase 5A.2 never feeds inferred edges into the Phase 5A.1 manual benchmark and
+does not assign branch identity. The unranked sensitivity helper
+`run_candidate_interval_sensitivity(...)` compares explicit configurations
+without selecting a best one. See
+[`docs/phase5a2_candidate_bank_inference.md`](docs/phase5a2_candidate_bank_inference.md)
+for the exact bin, bridge, support/span, provenance, plotting, and validation
+contract.
+
 ## Current limitations
 
 - CMR footprint intersection can return tiles with no pixels inside the exact
@@ -592,9 +643,10 @@ complete definitions, empty-result behavior, audit model, and limitations.
 - `height_egm2008` is a metadata-checked `height - geoid` derivation. No
   corrected WSE, tide adjustment, uncertainty propagation, or research-ready
   export is implemented.
-- No automatic bank inference, multi-channel segmentation, automatic width,
-  WSE comparison, or morphological interpretation is implemented. Phase 5A.1
-  only records explicit analyst-supplied interval measurements.
+- Phase 5A.2 provides only experimental station-bin candidate inference. It
+  does not infer validated physical banks, extract branches, calculate a
+  research-grade width, compare WSE, or interpret morphology. Phase 5A.1
+  remains the separate explicit analyst-supplied benchmark.
 - Map rasterization can display hundreds of thousands or millions of points
   without one artist per pixel, but dense points still overplot at finite image
   resolution. In particular, a three-pixel profile difference is not expected
@@ -627,9 +679,13 @@ complete definitions, empty-result behavior, audit model, and limitations.
 5. **Phase 5A.1 (current, complete):** immutable explicit wet-interval,
    internal-gap, total-wetted-width, and outer-span benchmark contract; no
    automatic bank or branch inference.
-6. Validate experimental multiple-channel methods with SWOT specialists,
+6. **Phase 5A.2 (current, complete):** experimental fixed station-bin
+   candidate wet-support inference with explicit parameters, three evidence
+   states, recorded optional bridges, and unranked sensitivity summaries; no
+   validated banks, research-grade width, or branch extraction.
+7. Validate experimental multiple-channel methods with SWOT specialists,
    independent observations, and sensitivity tests.
-7. Consider a web interface or AI orchestration only after the scientific API
+8. Consider a web interface or AI orchestration only after the scientific API
    is stable. Neither is part of the current implementation.
 
 ## Official references

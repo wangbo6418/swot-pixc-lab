@@ -53,3 +53,7 @@ class TransectError(PixcLabError, ValueError):
 
 class WidthError(PixcLabError, ValueError):
     """Raised when explicit wet-interval measurements are invalid."""
+
+
+class BankInferenceError(PixcLabError, ValueError):
+    """Raised when experimental candidate-interval inference is invalid."""
