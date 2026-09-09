@@ -19,6 +19,7 @@ from swot_pixc_lab.qc import (
     decode_quality_flags,
 )
 from swot_pixc_lab.subset import normalize_exact_aoi
+from swot_pixc_lab.transect import sample_transect
 from swot_pixc_lab.visualization import (
     CLASSIFICATION_LABELS,
     plot_classification_comparison,
@@ -26,7 +27,9 @@ from swot_pixc_lab.visualization import (
     plot_transect_classification,
     plot_transect_corridor,
     plot_transect_height,
+    plot_wet_interval_summary,
 )
+from swot_pixc_lab.width import measure_explicit_wet_intervals
 
 matplotlib.use("Agg", force=True)
 
@@ -178,6 +181,15 @@ def _sample(*, empty: bool = False) -> SimpleNamespace:
         profile_label="Channel extent candidate",
         profile_status="experimental / unvalidated",
     )
+
+
+def _width_result(intervals):
+    sample = sample_transect(
+        _pixel_dataset(candidate=True),
+        LineString([(86.9, 26.6), (87.1, 26.8)]),
+        corridor_half_width_m=100.0,
+    )
+    return sample, measure_explicit_wet_intervals(sample, intervals)
 
 
 def test_classification_map_is_one_rasterized_collection_and_does_not_mutate() -> None:
@@ -393,6 +405,73 @@ def test_empty_transect_plots_remain_auditable() -> None:
         (0, 2),
         (0, 2),
     ]
+
+
+def test_explicit_width_plot_draws_exact_supplied_intervals_and_gaps() -> None:
+    sample, result = _width_result([(0.0, 120.0), (180.0, 260.0), (310.0, 350.0)])
+    before = result.audit_summary()
+
+    axes = plot_wet_interval_summary(result)
+
+    assert isinstance(axes, Axes)
+    assert [patch.get_x() for patch in axes.patches] == [
+        0.0,
+        180.0,
+        310.0,
+        120.0,
+        260.0,
+    ]
+    assert [patch.get_width() for patch in axes.patches] == [
+        120.0,
+        80.0,
+        40.0,
+        60.0,
+        50.0,
+    ]
+    assert [patch.get_gid() for patch in axes.patches] == [
+        "swot-pixc-lab:explicit-wet-interval-1",
+        "swot-pixc-lab:explicit-wet-interval-2",
+        "swot-pixc-lab:explicit-wet-interval-3",
+        "swot-pixc-lab:explicit-dry-gap-1",
+        "swot-pixc-lab:explicit-dry-gap-2",
+    ]
+    labels = [text.get_text() for text in axes.texts]
+    assert "I1\n120 m" in labels
+    assert "G1: 60 m" in labels
+    assert any("Total wetted width: 240 m" in label for label in labels)
+    assert any("outer wetted span: 350 m" in label for label in labels)
+    assert any("internal dry gaps: 110 m" in label for label in labels)
+    assert axes.get_xlim() == pytest.approx((0.0, sample.transect_length_m))
+    assert "analyst-supplied measurements only" in axes.get_title()
+    assert "no bank inference" in axes.get_title()
+    assert result.audit_summary() == before
+
+
+def test_explicit_width_plot_uses_supplied_axes_and_keeps_caution_visible() -> None:
+    _, result = _width_result([(10.0, 20.0)])
+    import matplotlib.pyplot as plt
+
+    _, supplied_axes = plt.subplots()
+    returned = plot_wet_interval_summary(result, ax=supplied_axes, title="Owner review")
+
+    assert returned is supplied_axes
+    assert "Owner review" in returned.get_title()
+    assert "EXPERIMENTAL / MANUAL BENCHMARK CONTRACT" in returned.get_title()
+    assert "analyst-supplied measurements only" in returned.get_title()
+    assert "no bank inference" in returned.get_title()
+
+
+def test_empty_explicit_width_plot_has_no_misleading_interval_legend() -> None:
+    _, result = _width_result([])
+
+    axes = plot_wet_interval_summary(result)
+
+    assert len(axes.patches) == 0
+    assert axes.get_legend() is None
+    labels = [text.get_text() for text in axes.texts]
+    assert "No wet intervals supplied" in labels
+    assert any("outer wetted span: not defined" in label for label in labels)
+    assert any("Total wetted width: 0 m" in label for label in labels)
 
 
 def test_invalid_color_requests_are_actionable() -> None:

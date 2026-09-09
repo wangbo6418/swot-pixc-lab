@@ -197,6 +197,10 @@ def test_known_metric_station_distance_corridor_and_round_end_caps() -> None:
     assert sample.station_m.dtype == np.dtype("float64")
     assert sample.distance_to_transect_m.dtype == np.dtype("float64")
     assert sample.corridor_half_width_m == 50.0
+    assert sample.transect_length_m == pytest.approx(1000.0, abs=0.02)
+    assert sample.pixels.attrs["swot_pixc_lab_transect_length_m"] == pytest.approx(
+        sample.transect_length_m
+    )
     assert sample.outside_corridor_count == 1
     assert not sample.corridor.is_empty
 
