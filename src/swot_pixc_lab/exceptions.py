@@ -45,3 +45,7 @@ class ObservationMismatchError(PixcOpenError):
 
 class QualityMetadataError(PixcLabError, ValueError):
     """Raised when quality metadata cannot be decoded without guessing."""
+
+
+class TransectError(PixcLabError, ValueError):
+    """Raised when a manual transect or corridor cannot be sampled safely."""
