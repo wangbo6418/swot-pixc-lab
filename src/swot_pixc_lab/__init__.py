@@ -22,6 +22,7 @@ from .exceptions import (
     PixcOpenError,
     PixcSchemaError,
     QualityMetadataError,
+    TransectError,
 )
 from .mosaic import PixcObservation, open_pixc
 from .pixc import LocalPixcCollection, PixcCollection, SearchProvenance
@@ -42,6 +43,17 @@ from .reader import (
     PixcSourceMetadata,
     PixcVariableMetadata,
 )
+from .transect import TransectSample, sample_transect
+from .visualization import (
+    CLASSIFICATION_COLORS,
+    CLASSIFICATION_LABELS,
+    SUPPORTED_COLOR_VARIABLES,
+    plot_classification_comparison,
+    plot_pixc_map,
+    plot_transect_classification,
+    plot_transect_corridor,
+    plot_transect_height,
+)
 
 try:
     __version__ = version("swot-pixc-lab")
@@ -51,6 +63,8 @@ except PackageNotFoundError:  # source checkout without an editable install
 __all__ = [
     "AoiError",
     "CacheIntegrityError",
+    "CLASSIFICATION_COLORS",
+    "CLASSIFICATION_LABELS",
     "DEFAULT_PIXC_COLLECTION_CONCEPT_ID",
     "DEFAULT_PIXC_SHORT_NAME",
     "DEFAULT_PIXC_VERSION",
@@ -79,8 +93,17 @@ __all__ = [
     "QCRuleOutcome",
     "QualityMetadataError",
     "SearchProvenance",
+    "SUPPORTED_COLOR_VARIABLES",
+    "TransectError",
+    "TransectSample",
     "__version__",
     "apply_qc",
     "decode_quality_flags",
     "open_pixc",
+    "plot_classification_comparison",
+    "plot_pixc_map",
+    "plot_transect_classification",
+    "plot_transect_corridor",
+    "plot_transect_height",
+    "sample_transect",
 ]

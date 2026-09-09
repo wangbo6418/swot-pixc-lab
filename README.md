@@ -4,12 +4,13 @@ SWOT PIXC Lab is an early-stage scientific Python toolkit for finding,
 retrieving, and opening NASA Surface Water and Ocean Topography (SWOT) Level 2
 High Rate Pixel Cloud (PIXC) granules. Its long-term purpose is to support
 reproducible, pixel-level work on multiple-channel and anabranching rivers. The
-current release implements **Phases 1–3**: AOI/date discovery, metadata
+current release implements **Phases 1–4**: AOI/date discovery, metadata
 inspection, download/cache handling, verified local-file manifests, raw
 `/pixel_cloud` reading, exact AOI clipping, and provenance-preserving
 combination of tiles from one cycle/pass observation, followed by explicit,
 metadata-driven quality-control views and a documented EGM2008 height
-derivation.
+derivation, scalable plan-view visualization, and auditable sampling around
+user-supplied manual transects.
 
 The Phase 2 representation remains deliberately raw. Phase 3 never overwrites
 it: QC results contain derived masks and filtered views while the original
@@ -86,8 +87,10 @@ and the [Version D KaRIn release notes](https://archive.podaac.earthdata.nasa.go
 
 Python 3.12 or newer is required by the current package configuration.
 Runtime dependencies, including `earthaccess`, `netCDF4`, NumPy, pandas,
-Shapely, and xarray, are declared in `pyproject.toml` and are installed with the
-package; they do not need to be installed individually.
+pyproj, Shapely, and xarray, are declared in `pyproject.toml` and are installed
+with the package; they do not need to be installed individually. Pyproj is a
+core dependency because manual-transect distances must be calculated in a
+metric CRS rather than longitude/latitude degrees.
 
 ```bash
 python -m venv .venv
@@ -95,10 +98,17 @@ python -m pip install --upgrade pip
 python -m pip install -e .
 ```
 
-For GeoDataFrame AOIs and the demonstration notebook:
+For the Phase 4 scientific plots and notebooks:
 
 ```bash
-python -m pip install -e ".[geo,notebook]"
+python -m pip install -e ".[visualization,notebook]"
+```
+
+GeoDataFrame AOIs and the explicitly requested transect-sample export require
+the separate optional geographic dependency:
+
+```bash
+python -m pip install -e ".[geo]"
 ```
 
 For development and tests:
@@ -110,7 +120,7 @@ ruff format --check .
 python -m pytest -m "not integration"
 ```
 
-## Five-minute Phase 1–3 example
+## Five-minute Phase 1–4 example
 
 This example uses the project owner's upper Koshi River AOI and one known
 cycle/pass observation. Discovery is normally anonymous; protected PO.DAAC
@@ -122,7 +132,13 @@ download.
 ```python
 from pathlib import Path
 
-from swot_pixc_lab import PixcCollection, apply_qc
+from swot_pixc_lab import (
+    PixcCollection,
+    apply_qc,
+    plot_classification_comparison,
+    plot_pixc_map,
+    sample_transect,
+)
 
 # West, south, east, north in EPSG:4326.
 KOSHI_AOI = (86.87, 26.49, 87.20, 26.90)
@@ -169,6 +185,23 @@ print(legacy.summary)
 print(legacy.reason_counts)  # each rule evaluated independently
 print(legacy.incremental_reason_counts)  # removal in documented rule order
 print(extent.filtered)  # still has per-pixel provenance
+
+# Phase 4 plots all retained points with rasterized collection artists.
+axes = plot_pixc_map(extent, color_by="classification")
+figure, comparison_axes = plot_classification_comparison(
+    observation,
+    candidate=extent,
+)
+
+# A real transect is always supplied by the scientist; it is never inferred.
+USER_TRANSECT = None  # ((lon1, lat1), (lon2, lat2)) in EPSG:4326
+if USER_TRANSECT is not None:
+    sample = sample_transect(
+        extent,
+        transect=USER_TRANSECT,
+        corridor_half_width_m=50.0,
+    )
+    print(sample.selected_pixel_count, sample.classification_counts)
 ```
 
 With the two project-owner Koshi files already cached, run
@@ -182,6 +215,16 @@ It never downloads files and reports the raw, legacy, and experimental-profile
 results for the two existing Koshi tiles. The resulting scientific evidence,
 exact rule definitions, and open review questions are recorded in
 [`docs/phase3_koshi_qc_report.md`](docs/phase3_koshi_qc_report.md).
+
+The Phase 4 cache-only visual regression is
+[`examples/koshi_phase4_visual_review.py`](examples/koshi_phase4_visual_review.py).
+It creates the three-panel
+[`docs/phase4_koshi_water_classes.png`](docs/phase4_koshi_water_classes.png)
+review figure without selecting a transect or downloading data. Plot contents,
+performance, and scientific cautions are recorded in
+[`docs/phase4_koshi_visual_review.md`](docs/phase4_koshi_visual_review.md). The
+guarded visualization and synthetic manual-transect walkthrough is
+[`notebooks/02_pixc_visualization_and_transect_demo.ipynb`](notebooks/02_pixc_visualization_and_transect_demo.ipynb).
 
 `local.open(aoi=...)` reads the real `/pixel_cloud` group, excludes only points
 that cannot be spatially located or do not intersect the exact AOI, and then
@@ -420,6 +463,69 @@ the retained pixels automatically analysis-ready. In particular, the
 experimental extent profile still requires review by a SWOT/river scientist
 before use in any channel-geometry method.
 
+## Phase 4 visualization and manual transect inspection
+
+`plot_pixc_map(...)` accepts a raw `PixcObservation`, a `QCResult`, or a
+one-dimensional point `xarray.Dataset`. It supports `classification`, `height`,
+metadata-verified `height_egm2008` when present, `water_frac`, and
+`source_index`. A decoded flag can be inspected from a `QCResult` with a
+selector such as `color_by="geolocation_qual:layover_significant"`. The plot
+does not attach derived values to its input. Decoded flags from a `QCResult`
+are aligned by pixel provenance and shown on that result's retained-pixel
+domain; use a raw-profile `QCResult` when the full raw flag domain is needed.
+
+Classification maps use a stable seven-class legend based on the official PIXC
+enumeration. Longitude/latitude axes, a local geographic display aspect, and a
+coordinate grid remain visible. Every valid point is sent to one rasterized
+Matplotlib collection per plotted layer; there is no implicit sampling and no
+conversion of the point cloud to millions of GeoPandas geometries. No online
+basemap is required.
+
+`plot_classification_comparison(...)` creates three shared-extent panels:
+
+1. raw contextual classes 1–7, including class 2 land-near-water;
+2. documented water classes 3–7, explicitly labeled as an unvalidated visual
+   diagnostic; and
+3. the Phase 3 `channel_extent_candidate`, explicitly labeled experimental and
+   unvalidated.
+
+Manual sampling is separate from plotting:
+
+```python
+sample = sample_transect(
+    extent,
+    transect=((lon1, lat1), (lon2, lat2)),
+    corridor_half_width_m=50.0,
+)
+
+print(sample.pixels[["station_m", "distance_to_transect_m"]])
+print(sample.classification_counts)
+print(sample.source_tile_counts)
+```
+
+The line may instead be a Shapely or GeoJSON `LineString` in EPSG:4326. The
+function constructs a local WGS84-ellipsoid azimuthal-equidistant projection
+centered at the line's geodesic midpoint and calculates, in chunks, planar
+shortest distance to the projected finite line and planar station from its
+first endpoint. Selection is inclusive at the explicit half-width and uses
+round endpoint caps. Input point order, all pixel variables, `source_index`,
+and `source_point_index` are preserved in a detached `TransectSample`. Points
+are not snapped, gridded, averaged, or interpolated. These local projected
+measurements are not a blanket guarantee of exact geodesic along-line or
+offset distance, especially for long or multi-vertex lines.
+
+`plot_transect_corridor(...)`, `plot_transect_classification(...)`, and
+`plot_transect_height(...)` show the sampling geometry and discrete PIXC
+samples. They do not produce a continuous cross section or calculate a bank,
+branch, island, or width. `TransectSample.to_geodataframe()` creates point
+geometries only after a user explicitly requests optional export of the
+selected sample.
+The returned frame includes the corridor half-width, QC profile/status, and
+known granule/tile labels alongside per-pixel provenance. It also carries the
+full audit context in `GeoDataFrame.attrs`; because many GIS file formats do
+not preserve dataframe attributes, save that metadata separately when writing
+a GeoPackage.
+
 ## Current limitations
 
 - CMR footprint intersection can return tiles with no pixels inside the exact
@@ -442,9 +548,9 @@ before use in any channel-geometry method.
 - Longitude normalization is used only for clipping; original longitudes are
   retained. Polygon edges crossing the antimeridian must be split into an
   explicit MultiPolygon.
-- The current notebook demonstrates Phase 1 discovery and download. Phase 2
-  and Phase 3 real-data scripts are provided, but a combined scientific
-  notebook, visualization, and export workflow is not yet implemented.
+- The Phase 4 notebook provides guarded local visualization and a synthetic
+  manual-transect example. It deliberately does not select a real scientific
+  transect or automatically download data.
 - The legacy QC profile is intentionally conservative and is retained for
   reproducibility, not endorsed as a universal WSE filter. The
   `channel_extent_candidate` profile is explicitly experimental and has not
@@ -454,6 +560,16 @@ before use in any channel-geometry method.
   export is implemented.
 - No multi-channel segmentation, width, WSE comparison, or morphological
   interpretation is implemented.
+- Map rasterization can display hundreds of thousands or millions of points
+  without one artist per pixel, but dense points still overplot at finite image
+  resolution. In particular, a three-pixel profile difference is not expected
+  to be visible in a whole-AOI figure.
+- Manual-transect station and distance are local projected measurements, not
+  geodesic water widths. Regional or very long lines require an explicit
+  projection-distortion review; no universal safe-length threshold is assumed.
+- Bare xarray datasets retain numeric source indices but cannot reconstruct
+  tile or granule names unless their source metadata is also available.
+- Matplotlib is optional, and the core visualization has no online basemap.
 - The default collection ID and Version D product assumptions must be reviewed
   when PO.DAAC releases a successor or revises collection guidance.
 - Network availability, Earthdata authorization, real granule metadata, file
@@ -466,11 +582,13 @@ before use in any channel-geometry method.
    local manifests.
 2. **Phase 2 (complete):** metadata-preserving Version D `/pixel_cloud` reading,
    exact AOI clipping, and no-loss combination of tiles from one observation.
-3. **Phase 3 (current, complete):** preserve raw pixels; decode official
+3. **Phase 3 (complete):** preserve raw pixels; decode official
    Version D quality flags; provide raw, legacy, and experimental QC profiles
    with auditable removal summaries; and derive metadata-verified EGM2008
    height without claiming corrected WSE.
-4. **Phase 4:** scalable pixel visualization and research-ready export.
+4. **Phase 4 (current, complete):** scalable plan-view plots, classification
+   comparison, and auditable user-supplied metric transect sampling and
+   diagnostics without width inference.
 5. Validate experimental multiple-channel methods with SWOT specialists,
    independent observations, and sensitivity tests.
 6. Consider a web interface or AI orchestration only after the scientific API
