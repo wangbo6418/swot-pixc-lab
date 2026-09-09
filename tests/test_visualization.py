@@ -21,10 +21,12 @@ from swot_pixc_lab.qc import (
 )
 from swot_pixc_lab.subset import normalize_exact_aoi
 from swot_pixc_lab.transect import sample_transect
+from swot_pixc_lab.validation import evaluate_candidate_against_explicit
 from swot_pixc_lab.visualization import (
     CLASSIFICATION_LABELS,
     plot_candidate_wet_interval_inference,
     plot_classification_comparison,
+    plot_interval_validation,
     plot_pixc_map,
     plot_transect_classification,
     plot_transect_corridor,
@@ -220,6 +222,18 @@ def _candidate_inference_result(*, empty: bool = False):
         max_bridge_gap_m=0.0 if empty else 2.1 * bin_width,
     )
     return sample, result
+
+
+def _interval_validation_results(*, empty: bool = False):
+    sample, candidate = _candidate_inference_result(empty=empty)
+    if empty:
+        intervals = []
+    else:
+        width = candidate.station_bin_width_m
+        intervals = [(0.0, width), (3.0 * width, 4.0 * width)]
+    reference = measure_explicit_wet_intervals(sample, intervals)
+    validation = evaluate_candidate_against_explicit(reference, candidate)
+    return reference, candidate, validation
 
 
 def test_classification_map_is_one_rasterized_collection_and_does_not_mutate() -> None:
@@ -612,6 +626,222 @@ def test_empty_candidate_inference_plot_retains_unsampled_domain_and_cautions() 
         "unsampled (unknown; not confirmed dry)",
     ]
     assert result.audit_summary() == before
+
+
+def test_interval_validation_plot_has_four_distinct_aligned_audit_rows() -> None:
+    reference, candidate, validation = _interval_validation_results()
+    reference_before = reference.audit_summary()
+    candidate_before = candidate.audit_summary()
+
+    figure, axes = plot_interval_validation(reference, candidate, validation)
+
+    assert isinstance(figure, Figure)
+    assert axes.shape == (4,)
+    assert all(isinstance(axis, Axes) for axis in axes)
+    assert [axis.get_ylabel() for axis in axes] == [
+        "Manual\nreference",
+        "Observed\nsupport",
+        "Accepted\nbridges",
+        "Inferred\nintervals",
+    ]
+    assert all(
+        axis.get_xlim() == pytest.approx((0.0, reference.transect_length_m))
+        for axis in axes
+    )
+
+    reference_gids = {item.get_gid() for item in axes[0].patches}
+    assert reference_gids == {
+        "swot-pixc-lab:validation-reference-interval-1",
+        "swot-pixc-lab:validation-reference-interval-2",
+    }
+    observed_by_gid = {item.get_gid(): item for item in axes[1].patches}
+    assert len(observed_by_gid) == candidate.bin_count
+    assert "swot-pixc-lab:validation-observed-candidate_wet-bin-1" in observed_by_gid
+    sampled = observed_by_gid[
+        "swot-pixc-lab:validation-observed-sampled_noneligible-bin-2"
+    ]
+    unsampled = observed_by_gid["swot-pixc-lab:validation-observed-unsampled-bin-3"]
+    assert sampled.get_hatch() == ".."
+    assert unsampled.get_hatch() == "xx"
+    assert sampled.get_facecolor() != unsampled.get_facecolor()
+
+    bridge_by_gid = {item.get_gid(): item for item in axes[2].patches}
+    bridge_sampled = bridge_by_gid[
+        "swot-pixc-lab:validation-bridge-sampled_noneligible-bin-2"
+    ]
+    bridge_unsampled = bridge_by_gid["swot-pixc-lab:validation-bridge-unsampled-bin-3"]
+    bridge_outline = bridge_by_gid["swot-pixc-lab:validation-bridge-1"]
+    assert bridge_sampled.get_hatch() == ".."
+    assert bridge_unsampled.get_hatch() == "xx"
+    assert bridge_sampled.get_facecolor() != bridge_unsampled.get_facecolor()
+    assert bridge_outline.get_facecolor()[3] == 0.0
+    assert bridge_outline.get_x() == pytest.approx(
+        candidate.bridge_records[0].gap_start_station_m
+    )
+    assert bridge_outline.get_width() == pytest.approx(
+        candidate.bridge_records[0].gap_width_m
+    )
+
+    assert [item.get_gid() for item in axes[3].patches] == [
+        "swot-pixc-lab:validation-inferred-interval-1"
+    ]
+    assert "IoU=1.000" in axes[1].get_title()
+    assert "F1=1.000" in axes[1].get_title()
+    assert "IoU=0.500" in axes[3].get_title()
+    assert "F1=0.667" in axes[3].get_title()
+    assert "over manual wet=0 m" in axes[2].get_title()
+    assert "over manual nonwet=" in axes[2].get_title()
+    assert "ΔIoU=-0.500" in axes[2].get_title()
+    assert "ΔF1=-0.333" in axes[2].get_title()
+    assert validation.method_status in figure._suptitle.get_text()
+    assert "does not prove that reference is error-free" in figure._suptitle.get_text()
+    assert "not validated physical river banks" in figure._suptitle.get_text()
+    legend_labels = [item.get_text() for item in figure.legends[0].get_texts()]
+    assert "unsampled (unknown; not confirmed dry)" in legend_labels
+    assert "sampled noneligible / below threshold" in legend_labels
+    assert "bridge-inclusive inferred candidate interval" in legend_labels
+    assert reference.audit_summary() == reference_before
+    assert candidate.audit_summary() == candidate_before
+
+
+def test_interval_validation_plot_without_supplied_metrics_evaluates_not_infers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reference, candidate, _ = _interval_validation_results()
+    import swot_pixc_lab.bank_inference as bank_inference
+    import swot_pixc_lab.validation as validation_module
+
+    original_evaluate = validation_module.evaluate_candidate_against_explicit
+    calls = 0
+
+    def counted_evaluate(supplied_reference, supplied_candidate):
+        nonlocal calls
+        calls += 1
+        return original_evaluate(supplied_reference, supplied_candidate)
+
+    def forbidden_inference(*args, **kwargs):
+        raise AssertionError("plotting must not rerun candidate inference")
+
+    monkeypatch.setattr(
+        validation_module,
+        "evaluate_candidate_against_explicit",
+        counted_evaluate,
+    )
+    monkeypatch.setattr(
+        bank_inference,
+        "infer_candidate_wet_intervals",
+        forbidden_inference,
+    )
+
+    _, axes = plot_interval_validation(reference, candidate)
+
+    assert calls == 1
+    assert axes.shape == (4,)
+
+
+def test_supplied_interval_validation_is_checked_without_rerunning_inference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    reference, candidate, validation = _interval_validation_results()
+    import swot_pixc_lab.bank_inference as bank_inference
+    import swot_pixc_lab.validation as validation_module
+
+    original_evaluate = validation_module.evaluate_candidate_against_explicit
+    calls = 0
+
+    def counted_evaluate(supplied_reference, supplied_candidate):
+        nonlocal calls
+        calls += 1
+        return original_evaluate(supplied_reference, supplied_candidate)
+
+    def forbidden_inference(*args, **kwargs):
+        raise AssertionError("plotting must not rerun candidate inference")
+
+    monkeypatch.setattr(
+        validation_module,
+        "evaluate_candidate_against_explicit",
+        counted_evaluate,
+    )
+    monkeypatch.setattr(
+        bank_inference,
+        "infer_candidate_wet_intervals",
+        forbidden_inference,
+    )
+
+    figure, axes = plot_interval_validation(
+        reference,
+        candidate,
+        validation,
+        title="Owner validation review",
+    )
+
+    assert axes.shape == (4,)
+    assert calls == 1
+    assert "Owner validation review" in figure._suptitle.get_text()
+    assert "does not prove that reference is error-free" in figure._suptitle.get_text()
+    assert "not validated physical river banks" in figure._suptitle.get_text()
+
+
+def test_interval_validation_plot_rejects_stale_validation_metrics() -> None:
+    reference, candidate, validation = _interval_validation_results()
+    stale = replace(
+        validation,
+        total_bridged_gap_m=validation.total_bridged_gap_m + 1.0,
+    )
+
+    with pytest.raises(ValueError, match="does not correspond"):
+        plot_interval_validation(reference, candidate, stale)
+
+
+def test_empty_interval_validation_plot_keeps_unsampled_domain_visible() -> None:
+    reference, candidate, validation = _interval_validation_results(empty=True)
+
+    figure, axes = plot_interval_validation(reference, candidate, validation)
+
+    assert len(axes[0].patches) == 0
+    assert len(axes[1].patches) == candidate.bin_count
+    assert all(item.get_hatch() == "xx" for item in axes[1].patches)
+    assert len(axes[2].patches) == 0
+    assert len(axes[3].patches) == 0
+    assert "No manual wet intervals supplied" in [
+        item.get_text() for item in axes[0].texts
+    ]
+    assert "No observed candidate wet support" in [
+        item.get_text() for item in axes[1].texts
+    ]
+    assert "No accepted bridge regions" in [item.get_text() for item in axes[2].texts]
+    assert "No bridge-inclusive candidate intervals" in [
+        item.get_text() for item in axes[3].texts
+    ]
+    assert "IoU=undefined" in axes[1].get_title()
+    assert "F1=undefined" in axes[1].get_title()
+    assert "IoU=undefined" in axes[3].get_title()
+    assert "F1=undefined" in axes[3].get_title()
+    assert "unsampled bins remain unknown" in figure._suptitle.get_text()
+
+
+@pytest.mark.parametrize(
+    ("argument", "message"),
+    [
+        ("reference", "reference must be"),
+        ("candidate", "candidate must be"),
+        ("validation", "validation must be"),
+    ],
+)
+def test_interval_validation_plot_rejects_wrong_record_types(
+    argument: str,
+    message: str,
+) -> None:
+    reference, candidate, validation = _interval_validation_results()
+    inputs = {
+        "reference": reference,
+        "candidate": candidate,
+        "validation": validation,
+    }
+    inputs[argument] = object()
+
+    with pytest.raises(TypeError, match=message):
+        plot_interval_validation(**inputs)
 
 
 def test_invalid_color_requests_are_actionable() -> None:

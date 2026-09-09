@@ -29,6 +29,7 @@ if TYPE_CHECKING:
 
     from .bank_inference import CandidateIntervalInferenceResult
     from .transect import TransectSample
+    from .validation import IntervalValidationResult
     from .width import ExplicitIntervalWidthResult
 
 
@@ -737,6 +738,310 @@ def plot_candidate_wet_interval_inference(
     return axes
 
 
+def plot_interval_validation(
+    reference: ExplicitIntervalWidthResult,
+    candidate: CandidateIntervalInferenceResult,
+    validation: IntervalValidationResult | None = None,
+    *,
+    title: str | None = None,
+    figsize: tuple[float, float] = (13.0, 8.0),
+) -> tuple[Figure, NDArray[Any]]:
+    """Plot manual and candidate interval sets on four aligned station rows.
+
+    The plot is an audit view of records already produced by Phases 5A.1,
+    5A.2, and 5A.3a. It never reruns candidate inference. When ``validation``
+    is omitted, the deterministic continuous-interval comparison is evaluated
+    from ``reference`` and ``candidate``; no PIXC arrays are inspected.
+
+    The four rows keep the analyst reference, observed candidate-wet bins,
+    accepted bridge evidence, and bridge-inclusive inferred intervals visually
+    separate. Candidate edges remain experimental and are not validated banks.
+    """
+
+    from .bank_inference import CandidateIntervalInferenceResult
+    from .validation import (
+        IntervalValidationResult,
+        evaluate_candidate_against_explicit,
+    )
+    from .width import ExplicitIntervalWidthResult
+
+    if not isinstance(reference, ExplicitIntervalWidthResult):
+        raise TypeError("reference must be an ExplicitIntervalWidthResult.")
+    if not isinstance(candidate, CandidateIntervalInferenceResult):
+        raise TypeError("candidate must be a CandidateIntervalInferenceResult.")
+    if validation is not None and not isinstance(validation, IntervalValidationResult):
+        raise TypeError("validation must be an IntervalValidationResult or None.")
+    expected_validation = evaluate_candidate_against_explicit(reference, candidate)
+    if validation is None:
+        resolved_validation = expected_validation
+    elif validation.audit_summary() != expected_validation.audit_summary():
+        raise ValueError(
+            "validation does not correspond to the supplied reference and candidate; "
+            "recompute it with evaluate_candidate_against_explicit()."
+        )
+    else:
+        resolved_validation = validation
+
+    plt, _, patches = _import_matplotlib()
+    figure, axes = plt.subplots(
+        4,
+        1,
+        figsize=figsize,
+        sharex=True,
+        constrained_layout=True,
+    )
+    axes_array = np.asarray(axes, dtype=object)
+
+    reference_axis, observed_axis, bridge_axis, inferred_axis = axes_array
+    _plot_validation_intervals(
+        reference_axis,
+        reference.intervals,
+        gid_prefix="validation-reference-interval",
+        facecolor="#009e73",
+        edgecolor="#005a41",
+    )
+    if not reference.intervals:
+        _annotate_empty_validation_row(
+            reference_axis, "No manual wet intervals supplied"
+        )
+
+    observed_styles = {
+        "candidate_wet": {
+            "facecolor": "#1f78b4",
+            "edgecolor": "#0b3c5d",
+            "hatch": None,
+            "alpha": 1.0,
+        },
+        "sampled_noneligible": {
+            "facecolor": "#f2e6c9",
+            "edgecolor": "#8c6d31",
+            "hatch": "..",
+            "alpha": 0.55,
+        },
+        "unsampled": {
+            "facecolor": "#f2f2f2",
+            "edgecolor": "#777777",
+            "hatch": "xx",
+            "alpha": 0.7,
+        },
+    }
+    for item in candidate.bins:
+        style = observed_styles[item.state]
+        rectangle = patches.Rectangle(
+            (item.start_station_m, 0.18),
+            item.bin_span_m,
+            0.64,
+            linewidth=0.7,
+            zorder=2,
+            **style,
+        )
+        rectangle.set_gid(
+            f"swot-pixc-lab:validation-observed-{item.state}-bin-{item.bin_id}"
+        )
+        observed_axis.add_patch(rectangle)
+    if not candidate.candidate_intervals:
+        _annotate_empty_validation_row(
+            observed_axis, "No observed candidate wet support"
+        )
+
+    bridge_styles = {
+        "sampled_noneligible": {
+            "facecolor": "#f2e6c9",
+            "edgecolor": "#8c6d31",
+            "hatch": "..",
+        },
+        "unsampled": {
+            "facecolor": "#f2f2f2",
+            "edgecolor": "#777777",
+            "hatch": "xx",
+        },
+    }
+    for item in candidate.bins:
+        if item.bridge_id is None:
+            continue
+        style = bridge_styles[item.state]
+        rectangle = patches.Rectangle(
+            (item.start_station_m, 0.18),
+            item.bin_span_m,
+            0.64,
+            linewidth=0.9,
+            zorder=2,
+            **style,
+        )
+        rectangle.set_gid(
+            f"swot-pixc-lab:validation-bridge-{item.state}-bin-{item.bin_id}"
+        )
+        bridge_axis.add_patch(rectangle)
+    for bridge in candidate.bridge_records:
+        outline = patches.Rectangle(
+            (bridge.gap_start_station_m, 0.1),
+            bridge.gap_width_m,
+            0.8,
+            facecolor="none",
+            edgecolor="#d95f02",
+            linewidth=1.5,
+            linestyle="--",
+            zorder=3,
+        )
+        outline.set_gid(f"swot-pixc-lab:validation-bridge-{bridge.bridge_id}")
+        bridge_axis.add_patch(outline)
+    if not candidate.bridge_records:
+        _annotate_empty_validation_row(bridge_axis, "No accepted bridge regions")
+
+    _plot_validation_intervals(
+        inferred_axis,
+        candidate.candidate_intervals,
+        gid_prefix="validation-inferred-interval",
+        facecolor="#cab2d6",
+        edgecolor="#6a3d9a",
+        alpha=0.55,
+        linestyle="--",
+    )
+    if not candidate.candidate_intervals:
+        _annotate_empty_validation_row(
+            inferred_axis, "No bridge-inclusive candidate intervals"
+        )
+
+    observed_metrics = resolved_validation.observed_support_metrics
+    inferred_metrics = resolved_validation.bridge_inclusive_metrics
+    delta_iou_text = _format_optional_validation_metric(
+        resolved_validation.delta_iou_due_to_bridging
+    )
+    delta_f1_text = _format_optional_validation_metric(
+        resolved_validation.delta_f1_due_to_bridging
+    )
+    reference_axis.set_title(
+        "Manual reference — "
+        f"wet length={reference.total_wetted_width_m:g} m; "
+        f"intervals={reference.interval_count}"
+    )
+    observed_axis.set_title(
+        "Observed candidate wet support — "
+        f"support length={observed_metrics.predicted_wet_length_m:g} m; "
+        f"IoU={_format_optional_validation_metric(observed_metrics.iou)}; "
+        f"F1={_format_optional_validation_metric(observed_metrics.f1)}"
+    )
+    bridge_axis.set_title(
+        "Accepted bridge regions — "
+        f"total={resolved_validation.total_bridged_gap_m:g} m; "
+        "over manual wet="
+        f"{resolved_validation.bridged_length_over_manual_wet_m:g} m; "
+        "over manual nonwet="
+        f"{resolved_validation.bridged_length_over_manual_nonwet_m:g} m\n"
+        f"Metric change after bridging: ΔIoU={delta_iou_text}; ΔF1={delta_f1_text}"
+    )
+    inferred_axis.set_title(
+        "Bridge-inclusive inferred intervals — "
+        f"inferred set length={inferred_metrics.predicted_wet_length_m:g} m; "
+        f"IoU={_format_optional_validation_metric(inferred_metrics.iou)}; "
+        f"F1={_format_optional_validation_metric(inferred_metrics.f1)}"
+    )
+
+    row_labels = (
+        "Manual\nreference",
+        "Observed\nsupport",
+        "Accepted\nbridges",
+        "Inferred\nintervals",
+    )
+    for axis, label in zip(axes_array, row_labels, strict=True):
+        axis.set_xlim(0.0, reference.transect_length_m)
+        axis.set_ylim(0.0, 1.0)
+        axis.set_yticks([])
+        axis.set_ylabel(label, rotation=0, ha="right", va="center", labelpad=46)
+        axis.set_axisbelow(True)
+        axis.grid(axis="x", color="#d9d9d9", linewidth=0.6)
+    inferred_axis.set_xlabel("Station along the shared user-supplied transect (m)")
+
+    handles = [
+        patches.Patch(
+            facecolor="#009e73",
+            edgecolor="#005a41",
+            label="analyst-supplied manual wet reference",
+        ),
+        patches.Patch(
+            facecolor=observed_styles["candidate_wet"]["facecolor"],
+            edgecolor=observed_styles["candidate_wet"]["edgecolor"],
+            label="observed candidate wet-support bin",
+        ),
+        patches.Patch(
+            facecolor=observed_styles["sampled_noneligible"]["facecolor"],
+            edgecolor=observed_styles["sampled_noneligible"]["edgecolor"],
+            hatch=observed_styles["sampled_noneligible"]["hatch"],
+            label="sampled noneligible / below threshold",
+        ),
+        patches.Patch(
+            facecolor=observed_styles["unsampled"]["facecolor"],
+            edgecolor=observed_styles["unsampled"]["edgecolor"],
+            hatch=observed_styles["unsampled"]["hatch"],
+            label="unsampled (unknown; not confirmed dry)",
+        ),
+        patches.Patch(
+            facecolor="none",
+            edgecolor="#d95f02",
+            linestyle="--",
+            label="accepted bridge extent",
+        ),
+        patches.Patch(
+            facecolor="#cab2d6",
+            edgecolor="#6a3d9a",
+            linestyle="--",
+            alpha=0.55,
+            label="bridge-inclusive inferred candidate interval",
+        ),
+    ]
+    figure.legend(handles=handles, loc="outside lower center", ncols=3)
+    heading = title or "Manual-reference comparison of candidate wet intervals"
+    figure.suptitle(
+        f"{heading}\n{resolved_validation.method_status}; agreement is measured "
+        "against an analyst-supplied reference; "
+        "it does not prove that reference is error-free.\n"
+        "Candidate interval edges are experimental, not validated physical river "
+        "banks; unsampled bins remain unknown."
+    )
+    return figure, axes_array
+
+
+def _plot_validation_intervals(
+    ax: Axes,
+    intervals: Sequence[Any],
+    *,
+    gid_prefix: str,
+    facecolor: str,
+    edgecolor: str,
+    alpha: float = 1.0,
+    linestyle: str = "-",
+) -> None:
+    _, _, patches = _import_matplotlib()
+    for interval in intervals:
+        start = float(interval.start_station_m)
+        end = float(interval.end_station_m)
+        interval_id = getattr(interval, "interval_id", None)
+        if interval_id is None:
+            interval_id = interval.candidate_interval_id
+        interval_id = int(interval_id)
+        rectangle = patches.Rectangle(
+            (start, 0.18),
+            end - start,
+            0.64,
+            facecolor=facecolor,
+            edgecolor=edgecolor,
+            linewidth=1.0,
+            alpha=alpha,
+            linestyle=linestyle,
+            zorder=2,
+        )
+        rectangle.set_gid(f"swot-pixc-lab:{gid_prefix}-{interval_id}")
+        ax.add_patch(rectangle)
+
+
+def _annotate_empty_validation_row(ax: Axes, text: str) -> None:
+    ax.text(0.5, 0.5, text, transform=ax.transAxes, ha="center", va="center")
+
+
+def _format_optional_validation_metric(value: float | None) -> str:
+    return "undefined" if value is None else f"{value:.3f}"
+
+
 def _plot_map_layer(
     resolved: ResolvedPixelInput,
     *,
@@ -1253,6 +1558,7 @@ __all__ = [
     "SUPPORTED_COLOR_VARIABLES",
     "plot_classification_comparison",
     "plot_candidate_wet_interval_inference",
+    "plot_interval_validation",
     "plot_pixc_map",
     "plot_transect_classification",
     "plot_transect_corridor",
