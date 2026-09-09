@@ -61,3 +61,11 @@ class BankInferenceError(PixcLabError, ValueError):
 
 class ValidationError(PixcLabError, ValueError):
     """Raised when interval validation inputs or records are incompatible."""
+
+
+class BenchmarkError(PixcLabError, ValueError):
+    """Raised when benchmark configuration or inputs are invalid."""
+
+
+class AnnotationRequiredError(BenchmarkError):
+    """Raised when quantitative validation lacks independent annotations."""

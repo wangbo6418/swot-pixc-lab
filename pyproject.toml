@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "swot-pixc-lab"
-version = "0.7.0"
+version = "0.8.0"
 description = "Reproducible scientific workflows for SWOT L2 HR PIXC"
 readme = "README.md"
 requires-python = ">=3.12"

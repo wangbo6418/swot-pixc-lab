@@ -5,8 +5,9 @@ retrieving, and opening NASA Surface Water and Ocean Topography (SWOT) Level 2
 High Rate Pixel Cloud (PIXC) granules. Its long-term purpose is to support
 reproducible, pixel-level work on multiple-channel and anabranching rivers. The
 current release implements **Phases 1–4, the Phase 5A.1 manual benchmark, the
-experimental Phase 5A.2 candidate-inference baseline, and the Phase 5A.3a
-validation framework**: AOI/date discovery, metadata inspection,
+experimental Phase 5A.2 candidate-inference baseline, and the Phase 5A.3a/3b
+validation framework and pilot automation**: AOI/date discovery, metadata
+inspection,
 download/cache handling, verified local-file manifests, raw `/pixel_cloud`
 reading, exact AOI clipping, and provenance-preserving
 combination of tiles from one cycle/pass observation, followed by explicit,
@@ -652,6 +653,37 @@ They do not by themselves prove that the manual reference is error-free.** No
 Koshi annotations, parameter tuning, holdout split, or real-data performance
 claim is part of Phase 5A.3a.
 
+## Phase 5A.3b Koshi pilot benchmark automation
+
+Phase 5A.3b adds the reproducible machinery around the existing scientific
+contracts: strict JSON configuration, explicit GeoJSON transect manifests,
+optional deterministic proposal-only transects, independent-review annotation
+packets, multi-analyst boundary inputs, an ordered sensitivity runner,
+descriptive aggregate tables, figures, a Markdown report, and a hashed run
+manifest. The Koshi example is configured with an explicitly exploratory
+192-configuration grid; none of those settings is a recommendation.
+
+```python
+from swot_pixc_lab import (
+    generate_annotation_packets,
+    load_benchmark_config,
+    load_transect_manifest,
+)
+
+config = load_benchmark_config("examples/koshi_phase5a3b_pilot_config.json")
+manifest = load_transect_manifest(config.transect_manifest_path)
+packets = generate_annotation_packets(qc_result, config, manifest)
+```
+
+Proposals are always labeled `PROPOSED / REQUIRES SCIENTIST REVIEW` and cannot
+enter quantitative validation. A scientist must approve the geometry, consult
+independent imagery, and explicitly annotate ordered station intervals. The
+runner rebuilds every reference with `measure_explicit_wet_intervals(...)`,
+keeps analysts separate, and refuses to fabricate a reference when none is
+available. See
+[`docs/phase5a3b_koshi_benchmark.md`](docs/phase5a3b_koshi_benchmark.md) and
+[`examples/koshi_phase5a3b_pilot.py`](examples/koshi_phase5a3b_pilot.py).
+
 ## Current limitations
 
 - CMR footprint intersection can return tiles with no pixels inside the exact
@@ -692,6 +724,10 @@ claim is part of Phase 5A.3a.
   not certify the reference as truth, rank candidate configurations, infer
   branch correspondence, or establish transferability to another analyst,
   observation, site, or river.
+- Phase 5A.3b automates pilot preparation and evaluation but supplies no
+  approved Koshi transects, independent imagery, or manual truth. Its optional
+  proposals are review aids only, and the real validation stage remains gated
+  until the owner supplies approved geometries and human annotations.
 - Map rasterization can display hundreds of thousands or millions of points
   without one artist per pixel, but dense points still overplot at finite image
   resolution. In particular, a three-pixel profile difference is not expected
@@ -728,13 +764,15 @@ claim is part of Phase 5A.3a.
    candidate wet-support inference with explicit parameters, three evidence
    states, recorded optional bridges, and unranked sensitivity summaries; no
    validated banks, research-grade width, or branch extraction.
-7. **Phase 5A.3a (current, complete):** continuous interval-set validation of
+7. **Phase 5A.3a (complete):** continuous interval-set validation of
    observed and bridge-inclusive candidates against a Phase 5A.1 reference,
    plus unranked sensitivity comparison and synthetic benchmark-record
    scaffolding.
-8. **Phase 5A.3b (future):** owner-approved Koshi development and holdout
-   validation using independent imagery and repeat analysts; no parameters or
-   split have been selected.
+8. **Phase 5A.3b (current, complete infrastructure):** Koshi pilot
+   configuration, proposal review packets, manual-annotation assistance,
+   multi-analyst sensitivity/validation automation, descriptive figures, and
+   reproducibility manifests. Owner-approved transects, independent imagery,
+   completed annotations, and a future holdout evaluation are still required.
 9. Validate later multiple-channel methods with SWOT specialists, independent
    observations, and sensitivity tests.
 10. Consider a web interface or AI orchestration only after the scientific API
