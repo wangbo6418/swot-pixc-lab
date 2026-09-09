@@ -21,10 +21,27 @@ from .exceptions import (
     PixcLabError,
     PixcOpenError,
     PixcSchemaError,
+    QualityMetadataError,
 )
 from .mosaic import PixcObservation, open_pixc
 from .pixc import LocalPixcCollection, PixcCollection, SearchProvenance
-from .reader import PixcSourceMetadata, PixcVariableMetadata
+from .qc import (
+    QC_PROFILES,
+    DecodedQualityFlags,
+    FlagDefinition,
+    HeightReferenceResult,
+    QCProfile,
+    QCResult,
+    QCRule,
+    QCRuleOutcome,
+    apply_qc,
+    decode_quality_flags,
+)
+from .reader import (
+    PHASE3_POINT_VARIABLES,
+    PixcSourceMetadata,
+    PixcVariableMetadata,
+)
 
 try:
     __version__ = version("swot-pixc-lab")
@@ -44,6 +61,7 @@ __all__ = [
     "LocalFilesUnavailableError",
     "LocalPixcCollection",
     "ObservationMismatchError",
+    "PHASE3_POINT_VARIABLES",
     "PixcCollection",
     "PixcLabError",
     "PixcObservation",
@@ -51,7 +69,18 @@ __all__ = [
     "PixcSchemaError",
     "PixcSourceMetadata",
     "PixcVariableMetadata",
+    "QC_PROFILES",
+    "DecodedQualityFlags",
+    "FlagDefinition",
+    "HeightReferenceResult",
+    "QCProfile",
+    "QCResult",
+    "QCRule",
+    "QCRuleOutcome",
+    "QualityMetadataError",
     "SearchProvenance",
     "__version__",
+    "apply_qc",
+    "decode_quality_flags",
     "open_pixc",
 ]

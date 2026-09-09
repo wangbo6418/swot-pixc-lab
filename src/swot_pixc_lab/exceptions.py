@@ -41,3 +41,7 @@ class PixcSchemaError(PixcOpenError):
 
 class ObservationMismatchError(PixcOpenError):
     """Raised when files from different SWOT observations are combined."""
+
+
+class QualityMetadataError(PixcLabError, ValueError):
+    """Raised when quality metadata cannot be decoded without guessing."""
