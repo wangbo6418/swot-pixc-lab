@@ -5,9 +5,9 @@ retrieving, and opening NASA Surface Water and Ocean Topography (SWOT) Level 2
 High Rate Pixel Cloud (PIXC) granules. Its long-term purpose is to support
 reproducible, pixel-level work on multiple-channel and anabranching rivers. The
 current release implements **Phases 1–4, the Phase 5A.1 manual benchmark, the
-experimental Phase 5A.2 candidate-inference baseline, and the Phase 5A.3a/3b
-validation framework and pilot automation**: AOI/date discovery, metadata
-inspection,
+experimental Phase 5A.2 candidate-inference baseline, the Phase 5A.3a/3b
+validation framework and pilot automation, and Phase 5A.3c independent
+reference-imagery preparation**: AOI/date discovery, metadata inspection,
 download/cache handling, verified local-file manifests, raw `/pixel_cloud`
 reading, exact AOI clipping, and provenance-preserving
 combination of tiles from one cycle/pass observation, followed by explicit,
@@ -684,6 +684,39 @@ available. See
 [`docs/phase5a3b_koshi_benchmark.md`](docs/phase5a3b_koshi_benchmark.md) and
 [`examples/koshi_phase5a3b_pilot.py`](examples/koshi_phase5a3b_pilot.py).
 
+## Phase 5A.3c independent Sentinel-2 reference imagery
+
+Phase 5A.3c adds an optional, provider-isolated workflow for preparing small
+windowed Sentinel-2 Level-2A chips from Element84 Earth Search. It searches
+progressively at ±7, ±14, and at most ±30 days from the exact SWOT timing,
+records local SCL usability and complete item/chip provenance, and creates RGB,
+continuous-NDWI, candidate-summary, and owner-review products for the refined
+130° Koshi transects T001F–T007F. Same-datatake spatial tiles may be joined;
+different acquisition dates are never presented as one observation.
+
+```bash
+python -m pip install -e ".[reference-imagery]"
+python examples/koshi_phase5a3c_reference_imagery.py
+```
+
+The preparation command defaults to the local F proposal manifest, Koshi PIXC
+files, ignored `benchmark_cache/sentinel2/` cache, and
+`benchmark_output/koshi_phase5a3b_pilot/reference_imagery_review/`; use
+`--help` for `--transects`, `--pixc-directory`, cache/output, 1–2 km context,
+explicit usability-guard, STAC, and search-only overrides. It contacts a public
+service, so this README does not claim that a real run found or generated
+imagery.
+
+Sentinel RGB is independent annotation context. SCL is used only to describe
+local cloud/shadow/cirrus/snow/no-data conditions, and NDWI remains a continuous
+visualization with no threshold or accepted water mask. The blind-reference
+tool hides PIXC by default and never loads Phase 5A.2 candidate intervals. It
+geometrically projects scientist-selected clicks onto an approved fixed
+transect, previews Phase 5A.1 measurements, and requires explicit confirmation.
+The current F geometries remain proposals; preparation cannot approve them or
+create manual boundaries. See
+[`docs/phase5a3c_reference_imagery.md`](docs/phase5a3c_reference_imagery.md).
+
 ## Current limitations
 
 - CMR footprint intersection can return tiles with no pixels inside the exact
@@ -725,9 +758,10 @@ available. See
   branch correspondence, or establish transferability to another analyst,
   observation, site, or river.
 - Phase 5A.3b automates pilot preparation and evaluation but supplies no
-  approved Koshi transects, independent imagery, or manual truth. Its optional
-  proposals are review aids only, and the real validation stage remains gated
-  until the owner supplies approved geometries and human annotations.
+  approved Koshi transects or manual truth. Phase 5A.3c can prepare independent
+  Sentinel review context, but it neither guarantees usable public imagery nor
+  turns RGB, SCL, or NDWI into truth. The real validation stage remains gated
+  until the owner approves geometries and supplies human annotations.
 - Map rasterization can display hundreds of thousands or millions of points
   without one artist per pixel, but dense points still overplot at finite image
   resolution. In particular, a three-pixel profile difference is not expected
@@ -768,14 +802,18 @@ available. See
    observed and bridge-inclusive candidates against a Phase 5A.1 reference,
    plus unranked sensitivity comparison and synthetic benchmark-record
    scaffolding.
-8. **Phase 5A.3b (current, complete infrastructure):** Koshi pilot
+8. **Phase 5A.3b (complete infrastructure):** Koshi pilot
    configuration, proposal review packets, manual-annotation assistance,
    multi-analyst sensitivity/validation automation, descriptive figures, and
-   reproducibility manifests. Owner-approved transects, independent imagery,
-   completed annotations, and a future holdout evaluation are still required.
-9. Validate later multiple-channel methods with SWOT specialists, independent
+   reproducibility manifests.
+9. **Phase 5A.3c (current):** optional public-STAC Sentinel-2 review imagery,
+   local SCL usability diagnostics, continuous NDWI, provenance-preserving
+   windowed chips, geometry/imagery review outputs, and blind human-annotation
+   preparation. A successful real acquisition, owner approvals, completed
+   annotations, and a future holdout evaluation are still required.
+10. Validate later multiple-channel methods with SWOT specialists, independent
    observations, and sensitivity tests.
-10. Consider a web interface or AI orchestration only after the scientific API
+11. Consider a web interface or AI orchestration only after the scientific API
    is stable. Neither is part of the current implementation.
 
 ## Official references
