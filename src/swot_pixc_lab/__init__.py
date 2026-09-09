@@ -4,6 +4,18 @@ from __future__ import annotations
 
 from importlib.metadata import PackageNotFoundError, version
 
+from .bank_inference import (
+    CandidateIntervalConfiguration,
+    CandidateIntervalInferenceResult,
+    CandidateIntervalSensitivityResult,
+    CandidateSourceSummary,
+    CandidateWetInterval,
+    GapBridgeRecord,
+    StationBinEvidence,
+    StationBinState,
+    infer_candidate_wet_intervals,
+    run_candidate_interval_sensitivity,
+)
 from .constants import (
     DEFAULT_PIXC_COLLECTION_CONCEPT_ID,
     DEFAULT_PIXC_SHORT_NAME,
@@ -12,6 +24,7 @@ from .constants import (
 from .discovery import GranuleRecord
 from .exceptions import (
     AoiError,
+    BankInferenceError,
     CacheIntegrityError,
     DateRangeError,
     DiscoveryError,
@@ -49,6 +62,7 @@ from .visualization import (
     CLASSIFICATION_COLORS,
     CLASSIFICATION_LABELS,
     SUPPORTED_COLOR_VARIABLES,
+    plot_candidate_wet_interval_inference,
     plot_classification_comparison,
     plot_pixc_map,
     plot_transect_classification,
@@ -71,7 +85,13 @@ except PackageNotFoundError:  # source checkout without an editable install
 
 __all__ = [
     "AoiError",
+    "BankInferenceError",
     "CacheIntegrityError",
+    "CandidateIntervalConfiguration",
+    "CandidateIntervalInferenceResult",
+    "CandidateIntervalSensitivityResult",
+    "CandidateSourceSummary",
+    "CandidateWetInterval",
     "CLASSIFICATION_COLORS",
     "CLASSIFICATION_LABELS",
     "DEFAULT_PIXC_COLLECTION_CONCEPT_ID",
@@ -83,6 +103,7 @@ __all__ = [
     "DryGap",
     "ExplicitIntervalWidthResult",
     "GranuleRecord",
+    "GapBridgeRecord",
     "LocalFilesUnavailableError",
     "LocalPixcCollection",
     "ObservationMismatchError",
@@ -104,6 +125,8 @@ __all__ = [
     "QCRuleOutcome",
     "QualityMetadataError",
     "SearchProvenance",
+    "StationBinEvidence",
+    "StationBinState",
     "SUPPORTED_COLOR_VARIABLES",
     "TransectError",
     "TransectSample",
@@ -113,13 +136,16 @@ __all__ = [
     "__version__",
     "apply_qc",
     "decode_quality_flags",
+    "infer_candidate_wet_intervals",
     "open_pixc",
     "measure_explicit_wet_intervals",
     "plot_classification_comparison",
+    "plot_candidate_wet_interval_inference",
     "plot_pixc_map",
     "plot_transect_classification",
     "plot_transect_corridor",
     "plot_transect_height",
     "plot_wet_interval_summary",
     "sample_transect",
+    "run_candidate_interval_sensitivity",
 ]

@@ -11,6 +11,7 @@ from matplotlib.axes import Axes
 from matplotlib.figure import Figure
 from shapely.geometry import LineString
 
+from swot_pixc_lab.bank_inference import infer_candidate_wet_intervals
 from swot_pixc_lab.mosaic import PixcObservation
 from swot_pixc_lab.qc import (
     QC_PROFILES,
@@ -22,6 +23,7 @@ from swot_pixc_lab.subset import normalize_exact_aoi
 from swot_pixc_lab.transect import sample_transect
 from swot_pixc_lab.visualization import (
     CLASSIFICATION_LABELS,
+    plot_candidate_wet_interval_inference,
     plot_classification_comparison,
     plot_pixc_map,
     plot_transect_classification,
@@ -190,6 +192,34 @@ def _width_result(intervals):
         corridor_half_width_m=100.0,
     )
     return sample, measure_explicit_wet_intervals(sample, intervals)
+
+
+def _candidate_inference_result(*, empty: bool = False):
+    sample = sample_transect(
+        _pixel_dataset(count=0 if empty else 7, candidate=True),
+        LineString([(86.9, 26.6), (87.1, 26.8)]),
+        corridor_half_width_m=100.0,
+    )
+    bin_width = sample.transect_length_m / 5.0
+    if not empty:
+        sample.pixels["station_m"] = xr.DataArray(
+            bin_width * np.asarray([0.25, 0.5, 1.25, 3.25, 3.5, 4.25, 4.5]),
+            dims="points",
+            attrs={"units": "m"},
+        )
+        sample.pixels["classification"] = xr.DataArray(
+            np.asarray([4, 4, 1, 4, 4, 1, 2], dtype=np.uint8),
+            dims="points",
+            attrs={"_FillValue": UINT8_FILL},
+        )
+    result = infer_candidate_wet_intervals(
+        sample,
+        extent_classes=(4,),
+        station_bin_width_m=bin_width,
+        min_extent_pixels_per_bin=2,
+        max_bridge_gap_m=0.0 if empty else 2.1 * bin_width,
+    )
+    return sample, result
 
 
 def test_classification_map_is_one_rasterized_collection_and_does_not_mutate() -> None:
@@ -472,6 +502,116 @@ def test_empty_explicit_width_plot_has_no_misleading_interval_legend() -> None:
     assert "No wet intervals supplied" in labels
     assert any("outer wetted span: not defined" in label for label in labels)
     assert any("Total wetted width: 0 m" in label for label in labels)
+
+
+def test_candidate_inference_plot_preserves_states_bridges_and_bin_boundaries() -> None:
+    _, result = _candidate_inference_result()
+    before = result.audit_summary()
+
+    axes = plot_candidate_wet_interval_inference(result)
+
+    assert isinstance(axes, Axes)
+    assert [item.state for item in result.bins] == [
+        "candidate_wet",
+        "sampled_noneligible",
+        "unsampled",
+        "candidate_wet",
+        "sampled_noneligible",
+    ]
+    patches_by_gid = {item.get_gid(): item for item in axes.patches}
+    bin_patches = [
+        patches_by_gid[f"swot-pixc-lab:candidate-bin-{bin_id}"]
+        for bin_id in range(1, 6)
+    ]
+    assert (
+        len({(item.get_facecolor(), item.get_hatch()) for item in bin_patches[:3]}) == 3
+    )
+    assert bin_patches[1].get_hatch() == ".."
+    assert bin_patches[2].get_hatch() == "xx"
+
+    bridge = result.bridge_records[0]
+    bridge_patch = patches_by_gid[f"swot-pixc-lab:candidate-bridge-{bridge.bridge_id}"]
+    assert bridge_patch.get_x() == pytest.approx(bridge.gap_start_station_m)
+    assert bridge_patch.get_width() == pytest.approx(bridge.gap_width_m)
+    assert bridge_patch.get_facecolor()[3] == 0.0
+    assert bridge_patch.get_hatch() == "////"
+    assert bin_patches[2].get_facecolor() != bin_patches[0].get_facecolor()
+
+    interval = result.candidate_intervals[0]
+    interval_patch = patches_by_gid[
+        f"swot-pixc-lab:candidate-interval-{interval.candidate_interval_id}"
+    ]
+    assert interval_patch.get_x() == pytest.approx(interval.start_station_m)
+    assert interval_patch.get_x() + interval_patch.get_width() == pytest.approx(
+        interval.end_station_m
+    )
+    assert interval_patch.get_facecolor()[3] == 0.0
+    assert interval_patch.get_linestyle() == "--"
+    annotation = "\n".join(item.get_text() for item in axes.texts)
+    assert "Observed candidate wet-bin support:" in annotation
+    assert "summed inferred interval span:" in annotation
+    assert "bridged gaps:" in annotation
+    assert result.audit_summary() == before
+
+
+def test_candidate_inference_plot_uses_supplied_axes_and_keeps_full_caution() -> None:
+    _, result = _candidate_inference_result()
+    import matplotlib.pyplot as plt
+
+    _, supplied_axes = plt.subplots()
+    returned = plot_candidate_wet_interval_inference(
+        result,
+        ax=supplied_axes,
+        title="Owner candidate review",
+    )
+
+    assert returned is supplied_axes
+    plot_title = returned.get_title()
+    assert "Owner candidate review" in plot_title
+    assert result.method_status in plot_title
+    assert "not validated physical banks" in plot_title
+    assert "unsampled ≠ dry" in plot_title
+    assert "classes=(4)" in plot_title
+    assert f"bin={result.station_bin_width_m:g} m" in plot_title
+    assert f"minimum={result.min_extent_pixels_per_bin}" in plot_title
+    assert f"bridge tolerance={result.max_bridge_gap_m:g} m" in plot_title
+    legend_labels = [text.get_text() for text in returned.get_legend().get_texts()]
+    assert "candidate wet-support bin (classification evidence)" in legend_labels
+    assert "sampled below threshold (not confirmed dry)" in legend_labels
+    assert "unsampled (unknown; not confirmed dry)" in legend_labels
+    assert "caller-authorized bridged gap" in legend_labels
+    assert "candidate interval boundary (station-bin edge)" in legend_labels
+
+
+def test_empty_candidate_inference_plot_retains_unsampled_domain_and_cautions() -> None:
+    sample, result = _candidate_inference_result(empty=True)
+    before = result.audit_summary()
+
+    axes = plot_candidate_wet_interval_inference(result)
+
+    assert result.candidate_intervals == ()
+    assert result.bridge_records == ()
+    assert result.unsampled_bin_count == result.bin_count == 5
+    assert len(axes.patches) == result.bin_count
+    assert all(item.get_hatch() == "xx" for item in axes.patches)
+    assert all(
+        item.get_gid() == f"swot-pixc-lab:candidate-bin-{index}"
+        for index, item in enumerate(axes.patches, start=1)
+    )
+    labels = [text.get_text() for text in axes.texts]
+    assert any("Observed candidate wet-bin support: 0 m" in label for label in labels)
+    assert any("summed inferred interval span: 0 m" in label for label in labels)
+    assert any("outer candidate span: not defined" in label for label in labels)
+    assert axes.get_xlim() == pytest.approx((0.0, sample.transect_length_m))
+    assert "not validated physical banks" in axes.get_title()
+    assert "unsampled ≠ dry" in axes.get_title()
+    legend_labels = [text.get_text() for text in axes.get_legend().get_texts()]
+    assert legend_labels == [
+        "candidate wet-support bin (classification evidence)",
+        "sampled below threshold (not confirmed dry)",
+        "unsampled (unknown; not confirmed dry)",
+    ]
+    assert result.audit_summary() == before
 
 
 def test_invalid_color_requests_are_actionable() -> None:
