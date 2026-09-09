@@ -1,0 +1,102 @@
+{
+  "schema_version": "1.0",
+  "benchmark_id": "koshi_2024-01-14_c009_p286_pilot",
+  "benchmark_subset": "pilot",
+  "status": "PILOT / REQUIRES SCIENTIST-APPROVED TRANSECTS AND INDEPENDENT HUMAN ANNOTATIONS",
+  "observation": {
+    "identifier": "SWOT_L2_HR_PIXC_D_2024-01-14_C009_P286_KOSHI",
+    "date": "2024-01-14",
+    "cycle": 9,
+    "pass": 286,
+    "tiles": [
+      "107L",
+      "108L"
+    ],
+    "aoi": [
+      86.87,
+      26.49,
+      87.2,
+      26.9
+    ],
+    "filenames": [
+      "SWOT_L2_HR_PIXC_009_286_107L_20240114T081432_20240114T081443_PGD0_01.nc",
+      "SWOT_L2_HR_PIXC_009_286_108L_20240114T081442_20240114T081453_PGD0_01.nc"
+    ]
+  },
+  "local_data_directory": "../data/koshi_phase1",
+  "qc_profile": "channel_extent_candidate",
+  "corridor_half_width_m": 50.0,
+  "transect_manifest_path": "../benchmark_work/koshi_phase5a3b_pilot/transects.geojson",
+  "annotation_directory": "../benchmark_work/koshi_phase5a3b_pilot/annotations",
+  "output_directory": "../benchmark_output/koshi_phase5a3b_pilot",
+  "reference_imagery": {
+    "status": "independent imagery pending",
+    "source_provider": null,
+    "acquisition_date": null,
+    "temporal_offset_hours": null,
+    "cloud_quality_note": null,
+    "local_image_path": null,
+    "source_identifier": null,
+    "analyst_notes": "Select and register independent, near-date imagery before creating manual reference intervals. Do not derive reference truth automatically from PIXC, Phase 5A.2, or an optical water mask."
+  },
+  "packet_configuration": {
+    "extent_classes": [
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "station_bin_width_m": 25.0,
+    "min_extent_pixels_per_bin": 1,
+    "max_bridge_gap_m": 0.0
+  },
+  "sensitivity_grid": {
+    "notice": "EXPLORATORY PILOT GRID / NOT A RECOMMENDED FINAL CONFIGURATION",
+    "extent_class_sets": [
+      [
+        4
+      ],
+      [
+        3,
+        4
+      ],
+      [
+        3,
+        4,
+        5
+      ],
+      [
+        3,
+        4,
+        5,
+        6,
+        7
+      ]
+    ],
+    "station_bin_widths_m": [
+      10.0,
+      25.0,
+      50.0,
+      100.0
+    ],
+    "min_extent_pixels_per_bin": [
+      1,
+      2,
+      3
+    ],
+    "max_bridge_gaps_m": [
+      0.0,
+      25.0,
+      50.0,
+      100.0
+    ]
+  },
+  "transect_proposals": {
+    "enabled": true,
+    "count": 10,
+    "stratification_axis": "latitude",
+    "transect_azimuth_degrees": 90.0,
+    "line_length_m": 15000.0
+  }
+}

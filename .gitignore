@@ -221,6 +221,11 @@ __marimo__/
 data/
 *.nc
 *.nc4
+benchmark_output/
+benchmark_work/
+*.tif
+*.tiff
+*.cog
 .test_tmp/
 .test_tools/
 .test_venv/
