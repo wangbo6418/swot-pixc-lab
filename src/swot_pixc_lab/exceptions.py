@@ -49,3 +49,7 @@ class QualityMetadataError(PixcLabError, ValueError):
 
 class TransectError(PixcLabError, ValueError):
     """Raised when a manual transect or corridor cannot be sampled safely."""
+
+
+class WidthError(PixcLabError, ValueError):
+    """Raised when explicit wet-interval measurements are invalid."""

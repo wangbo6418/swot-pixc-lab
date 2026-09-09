@@ -28,6 +28,7 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
     from .transect import TransectSample
+    from .width import ExplicitIntervalWidthResult
 
 
 CLASSIFICATION_LABELS: Mapping[int, str] = {
@@ -447,6 +448,135 @@ def plot_transect_height(
             "pixel samples only; no interpolation or width inference",
         )
     )
+    return axes
+
+
+def plot_wet_interval_summary(
+    result: ExplicitIntervalWidthResult,
+    *,
+    ax: Axes | None = None,
+    title: str | None = None,
+) -> Axes:
+    """Plot only the explicit wet intervals and dry gaps in a width result.
+
+    This one-dimensional schematic is a review aid for measurements already
+    supplied by an analyst. It does not inspect pixels or infer bank locations.
+    """
+
+    from .width import ExplicitIntervalWidthResult
+
+    if not isinstance(result, ExplicitIntervalWidthResult):
+        raise TypeError("result must be an ExplicitIntervalWidthResult.")
+
+    axes = _axes_or_new(ax)
+    _, _, patches = _import_matplotlib()
+    axes.axhline(0.4, color="#666666", linewidth=0.8, zorder=1)
+
+    for interval in result.intervals:
+        rectangle = patches.Rectangle(
+            (interval.start_station_m, 0.2),
+            interval.width_m,
+            0.4,
+            facecolor="#1f78b4",
+            edgecolor="#0b3c5d",
+            linewidth=0.8,
+            zorder=3,
+        )
+        rectangle.set_gid(f"swot-pixc-lab:explicit-wet-interval-{interval.interval_id}")
+        axes.add_patch(rectangle)
+        axes.text(
+            0.5 * (interval.start_station_m + interval.end_station_m),
+            0.4,
+            f"I{interval.interval_id}\n{interval.width_m:g} m",
+            ha="center",
+            va="center",
+            color="white",
+            fontsize="small",
+            zorder=4,
+        )
+
+    for gap in result.dry_gaps:
+        rectangle = patches.Rectangle(
+            (gap.start_station_m, 0.2),
+            gap.width_m,
+            0.4,
+            facecolor="#f2e6c9",
+            edgecolor="#8c6d31",
+            hatch="///",
+            linewidth=0.8,
+            zorder=2,
+        )
+        rectangle.set_gid(f"swot-pixc-lab:explicit-dry-gap-{gap.gap_id}")
+        axes.add_patch(rectangle)
+        axes.text(
+            0.5 * (gap.start_station_m + gap.end_station_m),
+            0.04,
+            f"G{gap.gap_id}: {gap.width_m:g} m",
+            ha="center",
+            va="bottom",
+            fontsize="small",
+            color="#5d4a1f",
+            zorder=4,
+        )
+
+    if not result.intervals:
+        axes.text(
+            0.5,
+            0.5,
+            "No wet intervals supplied",
+            transform=axes.transAxes,
+            ha="center",
+            va="center",
+        )
+
+    span_text = (
+        "not defined (no wet intervals)"
+        if result.outer_wetted_span_m is None
+        else f"{result.outer_wetted_span_m:g} m"
+    )
+    axes.text(
+        0.5,
+        0.9,
+        f"Total wetted width: {result.total_wetted_width_m:g} m; "
+        f"outer wetted span: {span_text}; "
+        f"internal dry gaps: {result.total_internal_dry_gap_m:g} m",
+        transform=axes.transAxes,
+        ha="center",
+        va="center",
+        bbox={"boxstyle": "round", "facecolor": "white", "alpha": 0.9},
+    )
+    heading = title or "Explicit analyst-supplied wet intervals"
+    axes.set_title(
+        f"{heading}\n{result.method_status}; analyst-supplied measurements only; "
+        "no bank inference"
+    )
+    axes.set_xlabel("Station along user-supplied transect (m)")
+    axes.set_xlim(0.0, result.transect_length_m)
+    axes.set_ylim(0.0, 1.0)
+    axes.set_yticks([])
+    axes.set_axisbelow(True)
+    axes.grid(axis="x", color="#d9d9d9", linewidth=0.6)
+
+    handles = []
+    if result.intervals:
+        handles.append(
+            patches.Patch(
+                facecolor="#1f78b4",
+                edgecolor="#0b3c5d",
+                label="supplied wet interval",
+            )
+        )
+    if result.dry_gaps:
+        handles.append(
+            patches.Patch(
+                facecolor="#f2e6c9",
+                edgecolor="#8c6d31",
+                hatch="///",
+                label="explicit internal dry gap",
+            )
+        )
+    if handles:
+        axes.legend(handles=handles, loc="lower right")
     return axes
 
 
@@ -969,4 +1099,5 @@ __all__ = [
     "plot_transect_classification",
     "plot_transect_corridor",
     "plot_transect_height",
+    "plot_wet_interval_summary",
 ]

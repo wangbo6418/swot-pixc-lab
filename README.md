@@ -4,13 +4,15 @@ SWOT PIXC Lab is an early-stage scientific Python toolkit for finding,
 retrieving, and opening NASA Surface Water and Ocean Topography (SWOT) Level 2
 High Rate Pixel Cloud (PIXC) granules. Its long-term purpose is to support
 reproducible, pixel-level work on multiple-channel and anabranching rivers. The
-current release implements **Phases 1–4**: AOI/date discovery, metadata
+current release implements **Phases 1–4 plus the Phase 5A.1 manual benchmark**:
+AOI/date discovery, metadata
 inspection, download/cache handling, verified local-file manifests, raw
 `/pixel_cloud` reading, exact AOI clipping, and provenance-preserving
 combination of tiles from one cycle/pass observation, followed by explicit,
 metadata-driven quality-control views and a documented EGM2008 height
-derivation, scalable plan-view visualization, and auditable sampling around
-user-supplied manual transects.
+derivation, scalable plan-view visualization, auditable sampling around
+user-supplied manual transects, and explicit analyst-supplied wet-interval
+measurements. Phase 5A.1 does not infer banks or branches automatically.
 
 The Phase 2 representation remains deliberately raw. Phase 3 never overwrites
 it: QC results contain derived masks and filtered views while the original
@@ -35,7 +37,8 @@ can occupy one reach, and feature-level summaries do not by themselves expose
 the evidence needed to separate branches or evaluate gaps, bank edges,
 layover, dark water, and classification uncertainty. PIXC retains the
 pixel-level evidence needed for that future analysis. This package does **not**
-yet calculate channel widths or interpret river morphology.
+yet infer channel widths automatically or interpret river morphology. Its only
+width contract records boundaries supplied explicitly by an analyst.
 
 ## Product and API decisions
 
@@ -526,6 +529,37 @@ full audit context in `GeoDataFrame.attrs`; because many GIS file formats do
 not preserve dataframe attributes, save that metadata separately when writing
 a GeoPackage.
 
+## Phase 5A.1 explicit wet-interval benchmark
+
+Phase 5A.1 records ordered wet intervals measured by a scientist on the Phase 4
+station axis:
+
+```python
+from swot_pixc_lab import (
+    measure_explicit_wet_intervals,
+    plot_wet_interval_summary,
+)
+
+width = measure_explicit_wet_intervals(
+    sample,
+    intervals=[(0.0, 120.0), (180.0, 260.0), (310.0, 350.0)],
+)
+
+print(width.individual_interval_widths_m)  # (120.0, 80.0, 40.0)
+print(width.total_wetted_width_m)  # 240.0
+print(width.outer_wetted_span_m)  # 350.0
+print(width.total_internal_dry_gap_m)  # 110.0
+plot_wet_interval_summary(width)
+```
+
+The function validates boundaries against `sample.transect_length_m`, which is
+calculated from the user geometry in its recorded local metric CRS. It never
+uses PIXC station extrema as banks, and it never sorts, merges, deletes, or
+infers intervals. Touching interval pairs are rejected because separate wet
+components require an explicit positive dry gap. See
+[`docs/phase5a_width_contract.md`](docs/phase5a_width_contract.md) for the
+complete definitions, empty-result behavior, audit model, and limitations.
+
 ## Current limitations
 
 - CMR footprint intersection can return tiles with no pixels inside the exact
@@ -558,8 +592,9 @@ a GeoPackage.
 - `height_egm2008` is a metadata-checked `height - geoid` derivation. No
   corrected WSE, tide adjustment, uncertainty propagation, or research-ready
   export is implemented.
-- No multi-channel segmentation, width, WSE comparison, or morphological
-  interpretation is implemented.
+- No automatic bank inference, multi-channel segmentation, automatic width,
+  WSE comparison, or morphological interpretation is implemented. Phase 5A.1
+  only records explicit analyst-supplied interval measurements.
 - Map rasterization can display hundreds of thousands or millions of points
   without one artist per pixel, but dense points still overplot at finite image
   resolution. In particular, a three-pixel profile difference is not expected
@@ -586,12 +621,15 @@ a GeoPackage.
    Version D quality flags; provide raw, legacy, and experimental QC profiles
    with auditable removal summaries; and derive metadata-verified EGM2008
    height without claiming corrected WSE.
-4. **Phase 4 (current, complete):** scalable plan-view plots, classification
+4. **Phase 4 (complete):** scalable plan-view plots, classification
    comparison, and auditable user-supplied metric transect sampling and
    diagnostics without width inference.
-5. Validate experimental multiple-channel methods with SWOT specialists,
+5. **Phase 5A.1 (current, complete):** immutable explicit wet-interval,
+   internal-gap, total-wetted-width, and outer-span benchmark contract; no
+   automatic bank or branch inference.
+6. Validate experimental multiple-channel methods with SWOT specialists,
    independent observations, and sensitivity tests.
-6. Consider a web interface or AI orchestration only after the scientific API
+7. Consider a web interface or AI orchestration only after the scientific API
    is stable. Neither is part of the current implementation.
 
 ## Official references

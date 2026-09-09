@@ -23,6 +23,7 @@ from .exceptions import (
     PixcSchemaError,
     QualityMetadataError,
     TransectError,
+    WidthError,
 )
 from .mosaic import PixcObservation, open_pixc
 from .pixc import LocalPixcCollection, PixcCollection, SearchProvenance
@@ -53,6 +54,14 @@ from .visualization import (
     plot_transect_classification,
     plot_transect_corridor,
     plot_transect_height,
+    plot_wet_interval_summary,
+)
+from .width import (
+    DryGap,
+    ExplicitIntervalWidthResult,
+    WetInterval,
+    WidthSourceSummary,
+    measure_explicit_wet_intervals,
 )
 
 try:
@@ -71,6 +80,8 @@ __all__ = [
     "DateRangeError",
     "DiscoveryError",
     "DownloadError",
+    "DryGap",
+    "ExplicitIntervalWidthResult",
     "GranuleRecord",
     "LocalFilesUnavailableError",
     "LocalPixcCollection",
@@ -96,14 +107,19 @@ __all__ = [
     "SUPPORTED_COLOR_VARIABLES",
     "TransectError",
     "TransectSample",
+    "WetInterval",
+    "WidthError",
+    "WidthSourceSummary",
     "__version__",
     "apply_qc",
     "decode_quality_flags",
     "open_pixc",
+    "measure_explicit_wet_intervals",
     "plot_classification_comparison",
     "plot_pixc_map",
     "plot_transect_classification",
     "plot_transect_corridor",
     "plot_transect_height",
+    "plot_wet_interval_summary",
     "sample_transect",
 ]

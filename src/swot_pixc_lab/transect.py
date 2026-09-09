@@ -75,6 +75,20 @@ class TransectSample:
         return self.pixels["distance_to_transect_m"]
 
     @property
+    def transect_length_m(self) -> float:
+        """Return projected line length in the recorded local metric CRS."""
+
+        forward = Transformer.from_crs(_WGS84, self.local_crs, always_xy=True)
+        projected_line = transform(forward.transform, self.transect)
+        length = float(projected_line.length)
+        if projected_line.is_empty or not math.isfinite(length) or length <= 0.0:
+            raise TransectError(
+                "Transect could not be represented with finite positive length "
+                "in its recorded local metric CRS."
+            )
+        return length
+
+    @property
     def classification_counts(self) -> dict[int, int]:
         """Count selected classification values, excluding defined fill data."""
 
@@ -359,6 +373,7 @@ def sample_transect(
             "swot_pixc_lab_metric_crs_wkt": local_crs.to_wkt(),
             "swot_pixc_lab_projection_center_longitude": center[0],
             "swot_pixc_lab_projection_center_latitude": center[1],
+            "swot_pixc_lab_transect_length_m": float(projected_line.length),
             "swot_pixc_lab_transect_note": (
                 "User-supplied corridor sample only; no bank, branch, or width "
                 "was inferred."
