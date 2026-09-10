@@ -69,3 +69,7 @@ class BenchmarkError(PixcLabError, ValueError):
 
 class AnnotationRequiredError(BenchmarkError):
     """Raised when quantitative validation lacks independent annotations."""
+
+
+class ReferenceImageryError(PixcLabError, ValueError):
+    """Raised when independent reference imagery cannot be prepared safely."""

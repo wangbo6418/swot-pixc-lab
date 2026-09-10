@@ -223,9 +223,13 @@ data/
 *.nc4
 benchmark_output/
 benchmark_work/
+benchmark_cache/
 *.tif
 *.tiff
 *.cog
+*.jp2
+*.stac.tmp
+*.download.tmp
 .test_tmp/
 .test_tools/
 .test_venv/
